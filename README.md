@@ -3,9 +3,9 @@ recipe app
 ### Project Name: WhatToEat
 ## Team Information
 ### Team Members
+- Baojie Geng
 - Jiahuan He
 - Qianhui Yang
-- Baojie Geng
 - Jingcheng Yu
 ---
 ## Project Description
