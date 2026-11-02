@@ -1,6 +1,6 @@
 # WhatToEat
 recipe app
-**# Project Name: WhatToEat
+### Project Name: WhatToEat
 ## Team Information
 ### Team Members
 - Jiahuan He
