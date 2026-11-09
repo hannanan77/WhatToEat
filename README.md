@@ -1,4 +1,4 @@
-# WhatToEat
+<img width="1810" height="1182" alt="image" src="https://github.com/user-attachments/assets/038e6ddc-b735-4f20-b3b7-fb0836780860" /># WhatToEat
 
 ## Team Information
 
@@ -195,7 +195,8 @@ For ingredients without explicit weight measurements, documented reference weigh
 ## Design Diagrams
 
 ### UML Class Diagram
-To be added.
+<img width="1810" height="1182" alt="image" src="https://github.com/user-attachments/assets/a859a808-3099-4478-abce-51fe627cc71a" />
+
 
 ### Sequence Diagrams
 To be added.
