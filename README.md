@@ -1,4 +1,4 @@
-<img width="1810" height="1182" alt="image" src="https://github.com/user-attachments/assets/038e6ddc-b735-4f20-b3b7-fb0836780860" /># WhatToEat
+# WhatToEat
 
 ## Team Information
 
