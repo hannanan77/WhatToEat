@@ -192,11 +192,12 @@ For ingredients without explicit weight measurements, documented reference weigh
 
 ---
 
+## UI Sketch
+<img width="1810" height="1182" alt="image" src="https://github.com/user-attachments/assets/a859a808-3099-4478-abce-51fe627cc71a" />
+
 ## Design Diagrams
 
 ### UML Class Diagram
-<img width="1810" height="1182" alt="image" src="https://github.com/user-attachments/assets/a859a808-3099-4478-abce-51fe627cc71a" />
-
 
 ### Sequence Diagrams
 To be added.
