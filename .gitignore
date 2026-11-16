@@ -1,0 +1,17 @@
+# IntelliJ settings
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Generated build files
+target/
+out/
+*.class
+
+# Local environment variables
+.env
+
+# Operating system files
+.DS_Store
+Thumbs.db
