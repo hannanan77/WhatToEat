@@ -1,4 +1,4 @@
-package view;
+package recipe_library.view;
 
 import java.awt.Color;
 import java.awt.Font;
