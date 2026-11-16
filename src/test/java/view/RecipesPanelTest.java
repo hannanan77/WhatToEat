@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import javax.imageio.ImageIO;
+import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JScrollBar;
@@ -224,6 +225,32 @@ class RecipesPanelTest {
             assertEquals("No image available",
                     label(panel, "recipe-detail-image-message").getText());
             assertNull(label(panel, "recipe-detail-image-message").getIcon());
+        });
+    }
+
+    @Test
+    void onlineResultOffersImportWithoutSavingByItself() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            String[] imported = new String[1];
+            panel.setImportAction(externalId -> imported[0] = externalId);
+            panel.setRecipes(List.of(new RecipeDisplayData(
+                    "themealdb-52771",
+                    "Spicy Arrabiata Penne",
+                    "Vegetarian",
+                    null,
+                    null,
+                    List.of("1 pound penne"),
+                    List.of("Boil the pasta."),
+                    "Recipe data from TheMealDB (https://www.themealdb.com).",
+                    "52771",
+                    true)));
+
+            click(find(panel, "recipe-card-themealdb-52771"));
+            assertEquals("Recipe data from TheMealDB (https://www.themealdb.com).",
+                    label(panel, "recipe-detail-attribution").getText());
+            ((JButton) find(panel, "recipe-import-button")).doClick();
+            assertEquals("52771", imported[0]);
         });
     }
 
