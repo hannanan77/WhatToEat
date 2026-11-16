@@ -1,0 +1,214 @@
+package view;
+
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Container;
+import java.awt.Cursor;
+import java.awt.Dimension;
+import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+
+import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+
+import interface_adapter.browse_recipes.RecipeDisplayData;
+
+/**
+ * One recipe summary in the browsing list.
+ */
+final class RecipeCard extends JPanel {
+
+    private final String recipeId;
+    private final boolean frame;
+    private boolean selected;
+    private boolean hovered;
+
+    RecipeCard(RecipeDisplayData recipe, Runnable onSelect) {
+        this(recipe.getId(), false);
+        JPanel text = new JPanel();
+        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+        text.setOpaque(false);
+        text.add(label(recipe.getName(), EditorialTheme.serif(Font.BOLD, 18f),
+                EditorialTheme.TEXT, "recipe-card-name-" + recipeId));
+        text.add(Box.createVerticalStrut(6));
+        text.add(label(categoryText(recipe.getCategory()),
+                EditorialTheme.sans(Font.PLAIN, 13f), EditorialTheme.MUTED,
+                "recipe-card-category-" + recipeId));
+        text.add(Box.createVerticalStrut(4));
+        text.add(label(servingsText(recipe.getServings()),
+                EditorialTheme.sans(Font.PLAIN, 13f), EditorialTheme.GOLD,
+                "recipe-card-servings-" + recipeId));
+        add(text, BorderLayout.CENTER);
+        installPointer(this, pointer(onSelect));
+    }
+
+    /** A card outline with empty bars and no recipe content. */
+    static RecipeCard emptyFrame(String frameId, Runnable onSelect) {
+        RecipeCard card = new RecipeCard(frameId, true);
+        JPanel text = new JPanel();
+        text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
+        text.setOpaque(false);
+        text.add(bar(168, 14, EditorialTheme.TEXT));
+        text.add(Box.createVerticalStrut(10));
+        text.add(bar(96, 10, EditorialTheme.MUTED));
+        text.add(Box.createVerticalStrut(8));
+        text.add(bar(72, 10, EditorialTheme.GOLD));
+        card.add(text, BorderLayout.CENTER);
+        card.installPointer(card, card.pointer(onSelect));
+        return card;
+    }
+
+    private RecipeCard(String recipeId, boolean frame) {
+        this.recipeId = recipeId;
+        this.frame = frame;
+        setName("recipe-card-" + recipeId);
+        setLayout(new BorderLayout());
+        setOpaque(false);
+        setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
+        setAlignmentX(LEFT_ALIGNMENT);
+        refreshColors();
+    }
+
+    private MouseAdapter pointer(Runnable onSelect) {
+        return new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent event) {
+                hovered = true;
+                refreshColors();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+                Component source = (Component) event.getSource();
+                java.awt.Point point = javax.swing.SwingUtilities.convertPoint(
+                        source, event.getPoint(), RecipeCard.this);
+                if (!contains(point)) {
+                    hovered = false;
+                    refreshColors();
+                }
+            }
+
+            @Override
+            public void mouseClicked(MouseEvent event) {
+                onSelect.run();
+            }
+        };
+    }
+
+    String getRecipeId() {
+        return recipeId;
+    }
+
+    boolean isFrame() {
+        return frame;
+    }
+
+    void setSelected(boolean selected) {
+        this.selected = selected;
+        refreshColors();
+    }
+
+    @Override
+    public Dimension getMaximumSize() {
+        Dimension preferred = getPreferredSize();
+        return new Dimension(Integer.MAX_VALUE, preferred.height);
+    }
+
+    @Override
+    protected void paintComponent(Graphics graphics) {
+        Graphics2D graphics2D = (Graphics2D) graphics.create();
+        graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                RenderingHints.VALUE_ANTIALIAS_ON);
+        graphics2D.setColor(getBackground());
+        graphics2D.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1,
+                EditorialTheme.CORNER_ARC, EditorialTheme.CORNER_ARC);
+        if (selected) {
+            graphics2D.setColor(EditorialTheme.GOLD);
+            graphics2D.drawRoundRect(1, 1, getWidth() - 4, getHeight() - 4,
+                    EditorialTheme.CORNER_ARC, EditorialTheme.CORNER_ARC);
+        }
+        graphics2D.dispose();
+        super.paintComponent(graphics);
+    }
+
+    private void refreshColors() {
+        if (selected && hovered) {
+            setBackground(EditorialTheme.CARD_SELECTED_HOVER);
+        }
+        else if (selected) {
+            setBackground(EditorialTheme.CARD_SELECTED);
+        }
+        else if (hovered) {
+            setBackground(EditorialTheme.CARD_HOVER);
+        }
+        else {
+            setBackground(EditorialTheme.CARD);
+        }
+        repaint();
+    }
+
+    private void installPointer(Component component, MouseAdapter pointer) {
+        component.addMouseListener(pointer);
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                installPointer(child, pointer);
+            }
+        }
+    }
+
+    private static JPanel bar(int width, int height, java.awt.Color color) {
+        JPanel bar = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics graphics) {
+                Graphics2D graphics2D = (Graphics2D) graphics.create();
+                graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                        RenderingHints.VALUE_ANTIALIAS_ON);
+                graphics2D.setColor(getBackground());
+                graphics2D.fillRoundRect(0, 0, getWidth(), getHeight(),
+                        getHeight(), getHeight());
+                graphics2D.dispose();
+            }
+        };
+        bar.setOpaque(false);
+        bar.setBackground(color);
+        bar.setPreferredSize(new Dimension(width, height));
+        bar.setMaximumSize(new Dimension(width, height));
+        bar.setMinimumSize(new Dimension(width, height));
+        bar.setAlignmentX(LEFT_ALIGNMENT);
+        return bar;
+    }
+
+    private static JLabel label(String text, Font font, java.awt.Color color, String name) {
+        JLabel label = new JLabel(text);
+        label.setName(name);
+        label.setFont(font);
+        label.setForeground(color);
+        label.setAlignmentX(LEFT_ALIGNMENT);
+        return label;
+    }
+
+    static String categoryText(String category) {
+        if (category == null || category.isBlank()) {
+            return "No category";
+        }
+        return category;
+    }
+
+    static String servingsText(Integer servings) {
+        if (servings == null) {
+            return "Servings unavailable";
+        }
+        if (servings == 1) {
+            return "1 serving";
+        }
+        return servings + " servings";
+    }
+}
