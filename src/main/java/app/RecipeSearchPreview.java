@@ -5,22 +5,22 @@ import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
 import data_access.FileRecipeLibraryDataAccess;
-import data_access.LocalRecipeImageCache;
-import data_access.TheMealDbGateway;
-import interface_adapter.browse_saved_recipes.BrowseSavedRecipesController;
-import interface_adapter.browse_saved_recipes.BrowseSavedRecipesPresenter;
-import interface_adapter.import_recipe.ImportRecipeController;
-import interface_adapter.import_recipe.ImportRecipePresenter;
-import interface_adapter.recipe_browser.RecipeBrowserViewModel;
-import interface_adapter.search_online_recipes.SearchOnlineRecipesController;
-import interface_adapter.search_online_recipes.SearchOnlineRecipesPresenter;
-import use_case.browse_saved_recipes.BrowseSavedRecipesInteractor;
-import use_case.import_recipe.ImportRecipeInteractor;
-import use_case.online_recipe.OnlineRecipeGateway;
-import use_case.recipe_library.RecipeImageCache;
-import use_case.recipe_library.RecipeLibraryDataAccessInterface;
-import use_case.search_online_recipes.SearchOnlineRecipesInteractor;
-import view.RecipesPanel;
+import recipe_library.data_access.LocalRecipeImageCache;
+import recipe_library.data_access.TheMealDbGateway;
+import recipe_library.interface_adapter.browse_saved_recipes.BrowseSavedRecipesController;
+import recipe_library.interface_adapter.browse_saved_recipes.BrowseSavedRecipesPresenter;
+import recipe_library.interface_adapter.import_recipe.ImportRecipeController;
+import recipe_library.interface_adapter.import_recipe.ImportRecipePresenter;
+import recipe_library.interface_adapter.recipe_browser.RecipeBrowserViewModel;
+import recipe_library.interface_adapter.search_online_recipes.SearchOnlineRecipesController;
+import recipe_library.interface_adapter.search_online_recipes.SearchOnlineRecipesPresenter;
+import recipe_library.use_case.browse_saved_recipes.BrowseSavedRecipesInteractor;
+import recipe_library.use_case.import_recipe.ImportRecipeInteractor;
+import recipe_library.use_case.online_recipe.OnlineRecipeGateway;
+import recipe_library.use_case.library.RecipeImageCache;
+import recipe_library.use_case.library.RecipeLibraryDataAccessInterface;
+import recipe_library.use_case.search_online_recipes.SearchOnlineRecipesInteractor;
+import recipe_library.view.RecipesPanel;
 
 /**
  * Development window for searching TheMealDB and importing into the local library.

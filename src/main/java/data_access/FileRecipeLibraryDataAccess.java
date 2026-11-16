@@ -15,10 +15,10 @@ import org.json.JSONObject;
 import entity.Ingredient;
 import entity.Recipe;
 import use_case.add_recipe.AddRecipeDataAccessInterface;
-import use_case.online_recipe.OnlineRecipe;
-import use_case.recipe_library.DuplicateRecipeException;
-import use_case.recipe_library.RecipeLibraryDataAccessInterface;
-import use_case.recipe_library.RecipeLibraryRecord;
+import recipe_library.use_case.online_recipe.OnlineRecipe;
+import recipe_library.use_case.library.DuplicateRecipeException;
+import recipe_library.use_case.library.RecipeLibraryDataAccessInterface;
+import recipe_library.use_case.library.RecipeLibraryRecord;
 
 /**
  * Stores manually created recipes and imported recipes in one JSON file.
