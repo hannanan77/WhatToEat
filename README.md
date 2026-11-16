@@ -30,7 +30,7 @@ As a user, I want to browse popular recipes and search for recipes by name or in
 As a home cook, I want to add and save my own recipes so that I can access them again later.
 
 ### User Story 3 — View Recipe Nutrition
-As a user, I want to view the nutritional information of a selected recipe so that I can understand its calorie and nutrient content before cooking.
+As a home cook, I want to view the estimated nutritional information of a selected recipe so that I can make better dietary choices.
 
 ### User Story 4 — Weekly Meal Planner
 As a user, I want to assign recipes to meals throughout the week so that I can organize what I will cook.
@@ -72,21 +72,43 @@ As a user, I want to assign recipes to meals throughout the week so that I can o
   - The recipe cannot be saved:
     - The system displays an error message and preserves the entered data so the user can retry.
 
+
+
 ### Use Case 3 — View Recipe Nutrition
 
-**Main Success Scenario:**
-  1. The user selects a recipe.
-  2. The application retrieves ingredient information from the recipe.
-  3. The application obtains available nutritional data using USDA FoodData Central API.
-  4. The application converts ingredient quantities into grams, using estimated reference weights when necessary.
-  5. The application calculates total calories, protein, carbohydrates, and fat using formulas.
-  6. The application displays nutritional information, including per-serving values when serving information is available.
-  7. Estimated values are labeled clearly.
+**Name:** View Recipe Nutrition
 
-**Alternative Scenarios:**
-  - Nutritional data is unavailable, and the application displays "Not Available".
-  - An ingredient cannot be matched or its quantity cannot be determined.
-  - The API request fails.
+**Primary Actor:** User
+
+**Preconditions:**
+- The user has selected a recipe.
+- The recipe contains ingredient information.
+
+**Trigger:** The user requests to view the recipe's nutritional information.
+
+**Success Outcome:** The system displays estimated calories, protein, carbohydrates, and fat for the recipe, including per-serving values when available.
+
+**Main Success Scenario:**
+1. The user requests nutritional information for a selected recipe.
+2. The system identifies the recipe's ingredients and quantities.
+3. The system obtains nutritional information for each ingredient.
+4. The system calculates the estimated nutritional values.
+5. The system displays the results, including per-serving values and clearly labeled estimates.
+
+**Extensions:**
+
+**2a. An ingredient quantity is missing or cannot be determined.**
+- The system identifies the ingredient and indicates that the nutritional information is incomplete.
+
+**3a. Nutritional information is unavailable for an ingredient.**
+- The system displays "Not Available" for the missing information and labels any incomplete totals accordingly.
+
+**3b. Nutritional information cannot be retrieved.**
+- The system informs the user that nutritional information is temporarily unavailable.
+- The use case ends.
+
+**5a. The recipe has no valid serving count.**
+- The system displays total nutritional values without per-serving values.
 
 ### Use Case 4 — Weekly Meal Planner
 
@@ -121,52 +143,57 @@ The MVP consists of four core use cases: Browse and Search Recipes, Add a Recipe
 ### Entity 1 — Recipe
 
 **Instance Variables:**
-  - id
-  - name
-  - ingredients
-  - instructions
-  - imageUrl
-  - servings
+- id: String
+- name: String
+- ingredients: List<Ingredient>
+- instructions: List<String>
+- imageUrl: String
+- servings: Integer
 
 **Methods:**
-  - getName()
-  - getIngredients()
-  - getInstructions()
-  - getServings()
+- getId(): String
+- getName(): String
+- getIngredients(): List<Ingredient>
+- getInstructions(): List<String>
+- getImageUrl(): String
+- getServings(): Integer
 
 ### Entity 2 — Ingredient
 
 **Instance Variables:**
-  - name
-  - quantity
-  - unit
+- name: String 
+- quantity: Double 
+- unit: String
 
 **Methods:**
-  - getName()
-  - getQuantity()
-  - getUnit()
+- getName(): String
+- getQuantity(): Double
+- getUnit(): String
+- hasKnownQuantity(): boolean
 
 ### Entity 3 — MealPlan
 
 **Instance Variables:**
-  - weekStartDate
-  - entries
+- weekStartDate: LocalDate
+- entries: List<MealPlanEntry>
 
 **Methods:**
-  - assignRecipe()
-  - getEntries()
+- getWeekStartDate(): LocalDate
+- getEntries(): List<MealPlanEntry>
+- assignRecipe(entry: MealPlanEntry): void
+- removeAssignment(date: LocalDate, mealType: String): void
 
 ### Entity 4 — MealPlanEntry
 
 **Instance Variables:**
-  - date
-  - mealType
-  - recipeId
+- date: LocalDate
+- mealType: String
+- recipeId: String
 
 **Methods:**
-  - getDate()
-  - getMealType()
-  - getRecipeId()
+- getDate(): LocalDate
+- getMealType(): String
+- getRecipeId(): String
 
 ---
 
@@ -198,6 +225,7 @@ For ingredients without explicit weight measurements, documented reference weigh
 ## Design Diagrams
 
 ### UML Class Diagram
+![UML Draft.png](../../../UML%20Draft.png)
 
 ### Sequence Diagrams
 To be added.
