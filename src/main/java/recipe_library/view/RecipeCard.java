@@ -1,4 +1,4 @@
-package view;
+package recipe_library.view;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -18,7 +18,7 @@ import javax.swing.BoxLayout;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 
-import interface_adapter.browse_recipes.RecipeDisplayData;
+import recipe_library.interface_adapter.browse_recipes.RecipeDisplayData;
 
 /**
  * One recipe summary in the browsing list.

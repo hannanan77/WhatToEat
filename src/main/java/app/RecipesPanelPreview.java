@@ -4,7 +4,7 @@ import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
-import view.RecipesPanel;
+import recipe_library.view.RecipesPanel;
 
 /**
  * Development preview for the empty RecipesPanel.

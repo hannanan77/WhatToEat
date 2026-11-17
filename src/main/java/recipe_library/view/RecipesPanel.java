@@ -1,4 +1,4 @@
-package view;
+package recipe_library.view;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
@@ -15,12 +15,14 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -34,7 +36,8 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-import interface_adapter.browse_recipes.RecipeDisplayData;
+import recipe_library.interface_adapter.browse_recipes.RecipeDisplayData;
+import recipe_library.interface_adapter.recipe_browser.RecipeBrowserViewModel;
 
 /**
  * Reusable recipe browser. It is a panel, not an application frame.
@@ -54,6 +57,13 @@ import interface_adapter.browse_recipes.RecipeDisplayData;
 public class RecipesPanel extends JPanel {
 
     private final JTextField searchField = new JTextField();
+    private final JLabel statusLabel = new JLabel(" ");
+    private Runnable onlineSearchAction = () -> {
+    };
+    private Runnable showCollectionAction = () -> {
+    };
+    private Consumer<String> importAction = externalId -> {
+    };
     private final EditorialScrollContent cardList = new EditorialScrollContent();
     private final EditorialScrollContent detailContent = new EditorialScrollContent();
     private final JScrollPane listScroll = scrollPane(cardList, "recipes-list-scroll");
@@ -117,6 +127,42 @@ public class RecipesPanel extends JPanel {
             rebuildCards();
             renderDetails();
         };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
+    }
+
+    public void bind(RecipeBrowserViewModel viewModel) {
+        viewModel.addPropertyChangeListener(event -> {
+            setStatusMessage(viewModel.getStatus());
+            setRecipes(viewModel.getRecipes());
+        });
+        setStatusMessage(viewModel.getStatus());
+        setRecipes(viewModel.getRecipes());
+    }
+
+    public void setOnlineSearchAction(Runnable action) {
+        onlineSearchAction = action == null ? () -> { } : action;
+    }
+
+    public void setShowCollectionAction(Runnable action) {
+        showCollectionAction = action == null ? () -> { } : action;
+    }
+
+    public void setImportAction(Consumer<String> action) {
+        importAction = action == null ? externalId -> { } : action;
+    }
+
+    public String getSearchText() {
+        return searchField.getText();
+    }
+
+    public void setStatusMessage(String message) {
+        Runnable update = () -> statusLabel.setText(message == null || message.isBlank()
+                ? " " : message);
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
         }
@@ -195,6 +241,28 @@ public class RecipesPanel extends JPanel {
         heading.add(searchLabel);
         heading.add(Box.createVerticalStrut(8));
         heading.add(searchField);
+        heading.add(Box.createVerticalStrut(10));
+
+        JButton searchOnline = new JButton("Search TheMealDB");
+        searchOnline.setName("recipes-search-online");
+        styleActionButton(searchOnline);
+        searchOnline.addActionListener(event -> onlineSearchAction.run());
+
+        JButton collection = new JButton("My Collection");
+        collection.setName("recipes-show-collection");
+        styleActionButton(collection);
+        collection.addActionListener(event -> showCollectionAction.run());
+
+        statusLabel.setName("recipes-status");
+        statusLabel.setFont(EditorialTheme.sans(Font.PLAIN, 13f));
+        statusLabel.setForeground(EditorialTheme.MUTED);
+        statusLabel.setAlignmentX(LEFT_ALIGNMENT);
+
+        heading.add(searchOnline);
+        heading.add(Box.createVerticalStrut(8));
+        heading.add(collection);
+        heading.add(Box.createVerticalStrut(10));
+        heading.add(statusLabel);
         return heading;
     }
 
@@ -358,6 +426,14 @@ public class RecipesPanel extends JPanel {
             detailContent.add(detailName(selected.getName()));
             detailContent.add(Box.createVerticalStrut(8));
             detailContent.add(detailServings(selected.getServings()));
+            if (selected.getAttribution() != null) {
+                detailContent.add(Box.createVerticalStrut(8));
+                detailContent.add(attributionLabel(selected.getAttribution()));
+            }
+            if (selected.isImportable()) {
+                detailContent.add(Box.createVerticalStrut(14));
+                detailContent.add(importButton(selected.getExternalId()));
+            }
             detailContent.add(Box.createVerticalStrut(18));
             detailContent.add(horizontalRule());
             detailContent.add(Box.createVerticalStrut(18));
@@ -522,6 +598,23 @@ public class RecipesPanel extends JPanel {
         return scaled;
     }
 
+    private JLabel attributionLabel(String attribution) {
+        JLabel label = new JLabel(attribution);
+        label.setName("recipe-detail-attribution");
+        label.setFont(EditorialTheme.sans(Font.PLAIN, 13f));
+        label.setForeground(EditorialTheme.MUTED);
+        label.setAlignmentX(LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JButton importButton(String externalId) {
+        JButton button = new JButton("Import to Collection");
+        button.setName("recipe-import-button");
+        styleActionButton(button);
+        button.addActionListener(event -> importAction.accept(externalId));
+        return button;
+    }
+
     private JLabel sectionTitle(String title) {
         JLabel label = new JLabel(title);
         label.setFont(EditorialTheme.sans(Font.PLAIN, 12f));
@@ -640,9 +733,22 @@ public class RecipesPanel extends JPanel {
         field.setBorder(BorderFactory.createCompoundBorder(
                 new LineBorder(EditorialTheme.GOLD, 1, true),
                 BorderFactory.createEmptyBorder(10, 12, 10, 12)));
-        field.setToolTipText("Filter recipes by name");
+        field.setToolTipText("Filter the current list, or search TheMealDB by name");
         Dimension size = field.getPreferredSize();
         field.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
         field.setAlignmentX(LEFT_ALIGNMENT);
+    }
+
+    private static void styleActionButton(JButton button) {
+        button.setBackground(EditorialTheme.CARD);
+        button.setForeground(EditorialTheme.TEXT);
+        button.setFont(EditorialTheme.sans(Font.PLAIN, 14f));
+        button.setBorder(BorderFactory.createCompoundBorder(
+                new LineBorder(EditorialTheme.GOLD, 1, true),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)));
+        button.setAlignmentX(LEFT_ALIGNMENT);
+        Dimension size = button.getPreferredSize();
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
+        button.setFocusPainted(false);
     }
 }

@@ -1,4 +1,4 @@
-package interface_adapter.browse_recipes;
+package recipe_library.interface_adapter.browse_recipes;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
