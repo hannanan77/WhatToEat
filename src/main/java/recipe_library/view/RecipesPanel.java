@@ -563,14 +563,38 @@ public class RecipesPanel extends JPanel {
     }
 
     private static Image readImage(String imageUrl) {
+        if (imageUrl == null || imageUrl.isBlank()) {
+            return null;
+        }
+
+        String location = imageUrl.trim();
+
         try {
-            if (isRemote(imageUrl)) {
-                return ImageIO.read(new URL(imageUrl));
+            if (isRemote(location)) {
+                java.net.URLConnection connection =
+                        new URL(location).openConnection();
+
+                connection.setConnectTimeout(8000);
+                connection.setReadTimeout(8000);
+
+                try (java.io.InputStream input = connection.getInputStream()) {
+                    return ImageIO.read(input);
+                }
             }
-            File file = new File(imageUrl);
+
+            File file;
+
+            if (location.regionMatches(true, 0, "file:", 0, 5)) {
+                file = new File(java.net.URI.create(location));
+            }
+            else {
+                file = new File(location);
+            }
+
             if (!file.isFile()) {
                 return null;
             }
+
             return ImageIO.read(file);
         }
         catch (Exception exception) {
