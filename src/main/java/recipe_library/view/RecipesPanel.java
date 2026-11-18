@@ -36,8 +36,10 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
+import entity.Recipe;
 import recipe_library.interface_adapter.browse_recipes.RecipeDisplayData;
 import recipe_library.interface_adapter.recipe_browser.RecipeBrowserViewModel;
+import recipe_library.interface_adapter.resolve_selected_recipe.RecipeSelectionResolver;
 
 /**
  * Reusable recipe browser. It is a panel, not an application frame.
@@ -64,6 +66,13 @@ public class RecipesPanel extends JPanel {
     };
     private Consumer<String> importAction = externalId -> {
     };
+    private Consumer<Recipe> recipeSelectionAction = recipe -> {
+    };
+    private Runnable recipeSelectionClearedAction = () -> {
+    };
+    private Consumer<String> recipeSelectionFailedAction = message -> {
+    };
+    private RecipeSelectionResolver recipeResolver;
     private final EditorialScrollContent cardList = new EditorialScrollContent();
     private final EditorialScrollContent detailContent = new EditorialScrollContent();
     private final JScrollPane listScroll = scrollPane(cardList, "recipes-list-scroll");
@@ -74,6 +83,7 @@ public class RecipesPanel extends JPanel {
     private boolean frameSelection;
     private int emptyFrameCount;
     private int imageRequest;
+    private int selectionRequest;
 
     public RecipesPanel() {
         setName("recipes-panel");
@@ -120,10 +130,15 @@ public class RecipesPanel extends JPanel {
      */
     public void showEmptyCardFrames(int count) {
         Runnable update = () -> {
+            boolean dropSelection = selectedId != null;
             recipes.clear();
             selectedId = null;
             frameSelection = false;
             emptyFrameCount = Math.max(0, count);
+            if (dropSelection) {
+                selectionRequest++;
+                recipeSelectionClearedAction.run();
+            }
             rebuildCards();
             renderDetails();
         };
@@ -156,6 +171,38 @@ public class RecipesPanel extends JPanel {
         importAction = action == null ? externalId -> { } : action;
     }
 
+    /**
+     * Receives the complete recipe after the current selection has been loaded.
+     * It is not called with an id, display data, or a failed lookup.
+     */
+    public void setRecipeSelectionAction(Consumer<Recipe> action) {
+        recipeSelectionAction = action == null ? recipe -> { } : action;
+    }
+
+    /**
+     * Runs when the selection is no longer valid, including the moment another
+     * recipe is chosen.
+     */
+    public void setRecipeSelectionClearedAction(Runnable action) {
+        recipeSelectionClearedAction = action == null ? () -> { } : action;
+    }
+
+    /**
+     * Runs when the selected recipe cannot be loaded.
+     * The argument is a short message for the caller to show or ignore.
+     */
+    public void setRecipeSelectionFailedAction(Consumer<String> action) {
+        recipeSelectionFailedAction = action == null ? message -> { } : action;
+    }
+
+    /**
+     * Loads a complete recipe away from this view.
+     * Without a resolver, the panel still shows the selection and does not publish one.
+     */
+    public void setRecipeResolver(RecipeSelectionResolver resolver) {
+        recipeResolver = resolver;
+    }
+
     public String getSearchText() {
         return searchField.getText();
     }
@@ -182,6 +229,7 @@ public class RecipesPanel extends JPanel {
     }
 
     private void applyRecipes(List<RecipeDisplayData> recipes) {
+        String previousId = selectedId;
         emptyFrameCount = 0;
         frameSelection = false;
         this.recipes.clear();
@@ -194,6 +242,10 @@ public class RecipesPanel extends JPanel {
         }
         if (findById(selectedId) == null) {
             selectedId = null;
+        }
+        if (previousId != null && selectedId == null) {
+            selectionRequest++;
+            recipeSelectionClearedAction.run();
         }
         rebuildCards();
         renderDetails();
@@ -365,6 +417,8 @@ public class RecipesPanel extends JPanel {
     private void selectRecipe(String recipeId) {
         selectedId = recipeId;
         frameSelection = false;
+        int request = ++selectionRequest;
+        recipeSelectionClearedAction.run();
         for (Component component : cardList.getComponents()) {
             if (component instanceof RecipeCard) {
                 RecipeCard card = (RecipeCard) component;
@@ -376,6 +430,54 @@ public class RecipesPanel extends JPanel {
             }
         }
         renderDetails();
+        if (frameSelection || recipeResolver == null) {
+            return;
+        }
+        RecipeDisplayData selected = findById(recipeId);
+        if (selected == null) {
+            return;
+        }
+        recipeResolver.resolve(
+                selected.getId(),
+                selected.getExternalId(),
+                recipe -> deliverSelection(request, recipe),
+                message -> deliverFailure(request, message));
+    }
+
+    private void deliverSelection(int request, Recipe recipe) {
+        Runnable update = () -> {
+            if (request != selectionRequest) {
+                return;
+            }
+            if (recipe == null || selectedId == null || !recipe.getId().equals(selectedId)) {
+                recipeSelectionFailedAction.accept("The recipe could not be loaded.");
+                return;
+            }
+            recipeSelectionAction.accept(recipe);
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
+    }
+
+    private void deliverFailure(int request, String message) {
+        Runnable update = () -> {
+            if (request != selectionRequest) {
+                return;
+            }
+            recipeSelectionFailedAction.accept(message == null || message.isBlank()
+                    ? "The recipe could not be loaded."
+                    : message);
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
     }
 
     private void renderDetails() {

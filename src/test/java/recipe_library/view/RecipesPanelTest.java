@@ -27,6 +27,8 @@ import javax.swing.SwingUtilities;
 
 import org.junit.jupiter.api.Test;
 
+import entity.Ingredient;
+import entity.Recipe;
 import recipe_library.interface_adapter.browse_recipes.RecipeDisplayData;
 
 class RecipesPanelTest {
@@ -267,6 +269,138 @@ class RecipesPanelTest {
             assertEquals("Select a recipe to explore.",
                     label(panel, "recipes-detail-message").getText());
         });
+    }
+
+    @Test
+    void resolvedSelectionPublishesTheCompleteRecipeAndClearsWhenItIsRemoved() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            List<Recipe> selected = new ArrayList<>();
+            List<String> failures = new ArrayList<>();
+            int[] clears = {0};
+            panel.setRecipeSelectionAction(selected::add);
+            panel.setRecipeSelectionFailedAction(failures::add);
+            panel.setRecipeSelectionClearedAction(() -> clears[0]++);
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onSuccess.accept(entity(recipeId)));
+            panel.setRecipes(List.of(recipe("oats", "Morning oats", "Breakfast", 2, null,
+                    List.of("80 g oats"), List.of("Simmer until soft"))));
+
+            click(find(panel, "recipe-card-oats"));
+
+            assertEquals(1, clears[0]);
+            assertTrue(failures.isEmpty());
+            assertEquals("oats", selected.get(0).getId());
+            assertEquals("Morning oats", selected.get(0).getName());
+            assertEquals(1, selected.get(0).getIngredients().size());
+            assertEquals("Simmer until soft", selected.get(0).getInstructions().get(0));
+
+            panel.setRecipes(List.of(
+                    recipe("oats", "Morning oats", "Breakfast", 2, null,
+                            List.of("80 g oats"), List.of("Simmer until soft")),
+                    recipe("bread", "Brown bread", "Bakery", 1, null,
+                            List.of("Flour"), List.of("Bake"))));
+            assertEquals(1, clears[0]);
+            assertEquals(EditorialTheme.CARD_SELECTED,
+                    find(panel, "recipe-card-oats").getBackground());
+
+            panel.setRecipes(null);
+            assertEquals(2, clears[0]);
+            assertEquals(1, selected.size());
+            assertEquals("Select a recipe to explore.",
+                    label(panel, "recipes-detail-message").getText());
+        });
+    }
+
+    @Test
+    void onlineSelectionSuppliesTheMealIdAndAFailureDoesNotPublishARecipe() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            List<Recipe> selected = new ArrayList<>();
+            List<String> failures = new ArrayList<>();
+            String[] mealId = new String[1];
+            panel.setRecipeSelectionAction(selected::add);
+            panel.setRecipeSelectionFailedAction(failures::add);
+            panel.setRecipeResolver((recipeId, externalMealId, onSuccess, onFailure) -> {
+                mealId[0] = externalMealId;
+                onFailure.accept("That recipe is no longer available.");
+            });
+            panel.setRecipes(List.of(new RecipeDisplayData(
+                    "themealdb-52771",
+                    "Spicy Arrabiata Penne",
+                    "Vegetarian",
+                    null,
+                    null,
+                    List.of("1 pound penne"),
+                    List.of("Boil the pasta."),
+                    "Recipe data from TheMealDB (https://www.themealdb.com).",
+                    "52771",
+                    true)));
+
+            click(find(panel, "recipe-card-themealdb-52771"));
+
+            assertEquals("52771", mealId[0]);
+            assertTrue(selected.isEmpty());
+            assertEquals(List.of("That recipe is no longer available."), failures);
+        });
+    }
+
+    @Test
+    void anOlderLookupCannotReplaceANewerSelection() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            List<Recipe> selected = new ArrayList<>();
+            List<String> failures = new ArrayList<>();
+            List<Runnable> pending = new ArrayList<>();
+            panel.setRecipeSelectionAction(selected::add);
+            panel.setRecipeSelectionFailedAction(failures::add);
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    pending.add(() -> onSuccess.accept(entity(recipeId))));
+            panel.setRecipes(List.of(
+                    recipe("oats", "Morning oats", null, 1, null,
+                            List.of("Oats"), List.of("Cook")),
+                    recipe("salad", "Herb salad", null, 1, null,
+                            List.of("Herbs"), List.of("Toss"))));
+
+            click(find(panel, "recipe-card-oats"));
+            click(find(panel, "recipe-card-salad"));
+            pending.get(0).run();
+            assertTrue(selected.isEmpty());
+            pending.get(1).run();
+            assertEquals("salad", selected.get(0).getId());
+
+            pending.clear();
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    pending.add(() -> onFailure.accept("offline " + recipeId)));
+            click(find(panel, "recipe-card-oats"));
+            click(find(panel, "recipe-card-salad"));
+            pending.get(0).run();
+            assertTrue(failures.isEmpty());
+            pending.get(1).run();
+            assertEquals(List.of("offline salad"), failures);
+            assertEquals(1, selected.size());
+        });
+    }
+
+    @Test
+    void emptyFramesDoNotResolveARecipe() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            int[] calls = {0};
+            panel.showEmptyCardFrames(2);
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) -> calls[0]++);
+            click(find(panel, "recipe-card-frame-1"));
+            assertEquals(0, calls[0]);
+            assertNull(find(panel, "recipe-detail-name"));
+        });
+    }
+
+    private static Recipe entity(String id) {
+        return new Recipe(id, "Morning oats",
+                List.of(new Ingredient("oats", 80.0, "g")),
+                List.of("Simmer until soft"),
+                null,
+                2);
     }
 
     private static RecipesPanel layout(RecipesPanel panel) {
