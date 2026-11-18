@@ -231,6 +231,25 @@ class RecipesPanelTest {
     }
 
     @Test
+    void fileUriImagesLoadLikeLocalPaths() throws Exception {
+        File imageFile = File.createTempFile("recipe-uri", ".png");
+        imageFile.deleteOnExit();
+        ImageIO.write(new BufferedImage(4, 4, BufferedImage.TYPE_INT_RGB), "png", imageFile);
+        String fileUri = imageFile.toURI().toString();
+
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            panel.setRecipes(List.of(recipe("photo", "Plated dish", null, 2,
+                    fileUri, List.of("Greens"), List.of("Plate"))));
+            click(find(panel, "recipe-card-photo"));
+
+            JLabel image = label(panel, "recipe-detail-image-message");
+            assertNotNull(image.getIcon());
+            assertTrue(image.getText() == null || image.getText().isEmpty());
+        });
+    }
+
+    @Test
     void onlineResultOffersImportWithoutSavingByItself() {
         onEdt(() -> {
             RecipesPanel panel = layout(new RecipesPanel());
