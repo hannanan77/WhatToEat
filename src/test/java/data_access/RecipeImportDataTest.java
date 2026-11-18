@@ -17,14 +17,14 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import data_access.recipe_library.IngredientMeasureParser;
+import data_access.recipe_library.LocalRecipeImageCache;
+import data_access.recipe_library.TheMealDbRecipeMapper;
 import entity.Ingredient;
 import entity.Recipe;
-import recipe_library.data_access.IngredientMeasureParser;
-import recipe_library.data_access.LocalRecipeImageCache;
-import recipe_library.data_access.TheMealDbRecipeMapper;
-import recipe_library.use_case.library.DuplicateRecipeException;
-import recipe_library.use_case.library.RecipeLibraryRecord;
-import recipe_library.use_case.online_recipe.OnlineRecipe;
+import use_case.recipe_library.DuplicateRecipeException;
+import use_case.recipe_library.RecipeLibraryRecord;
+import use_case.recipe_library.OnlineRecipe;
 import use_case.add_recipe.AddRecipeDataAccessInterface;
 
 class RecipeImportDataTest {
