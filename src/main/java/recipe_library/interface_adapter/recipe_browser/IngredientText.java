@@ -14,7 +14,9 @@ public final class IngredientText {
         List<String> lines = new ArrayList<>();
         for (Ingredient ingredient : ingredients) {
             if (ingredient.getQuantity() == null) {
-                lines.add(ingredient.getName() + " (" + ingredient.getUnit() + ")");
+                lines.add(unspecified(ingredient.getUnit())
+                        ? ingredient.getName()
+                        : ingredient.getName() + " (" + ingredient.getUnit() + ")");
             }
             else {
                 lines.add(formatQuantity(ingredient.getQuantity())
@@ -22,6 +24,10 @@ public final class IngredientText {
             }
         }
         return lines;
+    }
+
+    private static boolean unspecified(String unit) {
+        return unit == null || unit.isBlank() || unit.equalsIgnoreCase("unspecified");
     }
 
     private static String formatQuantity(double quantity) {

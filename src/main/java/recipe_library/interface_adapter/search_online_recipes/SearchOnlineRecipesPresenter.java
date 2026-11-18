@@ -2,6 +2,7 @@ package recipe_library.interface_adapter.search_online_recipes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.SwingUtilities;
 
@@ -17,9 +18,31 @@ import recipe_library.use_case.search_online_recipes.SearchOnlineRecipesOutputDa
 public class SearchOnlineRecipesPresenter implements SearchOnlineRecipesOutputBoundary {
 
     private final RecipeBrowserViewModel viewModel;
+    private final AtomicInteger latestRequest = new AtomicInteger();
+    private final ThreadLocal<Integer> requestOnThread = new ThreadLocal<>();
 
     public SearchOnlineRecipesPresenter(RecipeBrowserViewModel viewModel) {
         this.viewModel = viewModel;
+    }
+
+    /**
+     * Starts a search. A later call makes an older response obsolete.
+     */
+    int startRequest() {
+        return latestRequest.incrementAndGet();
+    }
+
+    /**
+     * Runs one search on the worker thread and tags its response.
+     */
+    void runRequest(int request, Runnable action) {
+        requestOnThread.set(request);
+        try {
+            action.run();
+        }
+        finally {
+            requestOnThread.remove();
+        }
     }
 
     @Override
@@ -62,7 +85,13 @@ public class SearchOnlineRecipesPresenter implements SearchOnlineRecipesOutputBo
     }
 
     private void publish(List<RecipeDisplayData> recipes, String status) {
-        Runnable update = () -> viewModel.setRecipes(recipes, status);
+        Integer request = requestOnThread.get();
+        Runnable update = () -> {
+            if (request != null && request.intValue() != latestRequest.get()) {
+                return;
+            }
+            viewModel.setRecipes(recipes, status);
+        };
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
         }

@@ -43,9 +43,10 @@ public class RecipeSearchPreview {
                 new BrowseSavedRecipesInteractor(
                         library, new BrowseSavedRecipesPresenter(viewModel)),
                 viewModel);
+        SearchOnlineRecipesPresenter searchPresenter = new SearchOnlineRecipesPresenter(viewModel);
         SearchOnlineRecipesController searchController = new SearchOnlineRecipesController(
-                new SearchOnlineRecipesInteractor(
-                        gateway, library, new SearchOnlineRecipesPresenter(viewModel)),
+                new SearchOnlineRecipesInteractor(gateway, library, searchPresenter),
+                searchPresenter,
                 viewModel);
         ImportRecipeController importController = new ImportRecipeController(
                 new ImportRecipeInteractor(

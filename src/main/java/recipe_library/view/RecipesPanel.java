@@ -11,6 +11,8 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
@@ -669,8 +671,8 @@ public class RecipesPanel extends JPanel {
             if (isRemote(imageUrl)) {
                 return ImageIO.read(new URL(imageUrl));
             }
-            File file = new File(imageUrl);
-            if (!file.isFile()) {
+            File file = localImageFile(imageUrl);
+            if (file == null || !file.isFile()) {
                 return null;
             }
             return ImageIO.read(file);
@@ -678,6 +680,22 @@ public class RecipesPanel extends JPanel {
         catch (Exception exception) {
             return null;
         }
+    }
+
+    /**
+     * Add Recipe stores a local picture as a file URI.
+     * A normal filesystem path is still accepted.
+     */
+    private static File localImageFile(String imageUrl) {
+        if (imageUrl.regionMatches(true, 0, "file:", 0, 5)) {
+            try {
+                return new File(new URI(imageUrl));
+            }
+            catch (URISyntaxException exception) {
+                return null;
+            }
+        }
+        return new File(imageUrl);
     }
 
     private static Image scale(Image source, int maxWidth, int maxHeight) {

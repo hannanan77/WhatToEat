@@ -44,9 +44,11 @@ public final class IngredientMeasureParser {
 
         String text = raw.trim()
                 .replace('\u00a0', ' ')
-                .replace("½", "1/2")
-                .replace("¼", "1/4")
-                .replace("¾", "3/4");
+                .replace("½", " 1/2")
+                .replace("¼", " 1/4")
+                .replace("¾", " 3/4")
+                .replaceAll("\\s+", " ")
+                .trim();
 
         Matcher mixed = MIXED_NUMBER.matcher(text);
         if (mixed.matches() && !mixed.group(3).equals("0")) {
