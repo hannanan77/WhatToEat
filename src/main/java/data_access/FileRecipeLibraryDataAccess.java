@@ -15,10 +15,10 @@ import org.json.JSONObject;
 import entity.Ingredient;
 import entity.Recipe;
 import use_case.add_recipe.AddRecipeDataAccessInterface;
-import recipe_library.use_case.online_recipe.OnlineRecipe;
-import recipe_library.use_case.library.DuplicateRecipeException;
-import recipe_library.use_case.library.RecipeLibraryDataAccessInterface;
-import recipe_library.use_case.library.RecipeLibraryRecord;
+import use_case.recipe_library.OnlineRecipe;
+import use_case.recipe_library.DuplicateRecipeException;
+import use_case.recipe_library.RecipeLibraryDataAccessInterface;
+import use_case.recipe_library.RecipeLibraryRecord;
 
 /**
  * Stores manually created recipes and imported recipes in one JSON file.
@@ -106,16 +106,14 @@ public class FileRecipeLibraryDataAccess implements
             return new ArrayList<>();
         }
         try {
-            JSONArray recipes = new JSONObject(json).optJSONArray("recipes");
-            List<JSONObject> objects = new ArrayList<>();
-            if (recipes == null) {
-                return objects;
+            JSONObject root = new JSONObject(json);
+            if (!root.has("recipes") || root.isNull("recipes")) {
+                throw new IOException("Saved recipes could not be read.");
             }
+            JSONArray recipes = root.getJSONArray("recipes");
+            List<JSONObject> objects = new ArrayList<>();
             for (int index = 0; index < recipes.length(); index++) {
-                JSONObject recipe = recipes.optJSONObject(index);
-                if (recipe != null) {
-                    objects.add(recipe);
-                }
+                objects.add(recipes.getJSONObject(index));
             }
             return objects;
         }

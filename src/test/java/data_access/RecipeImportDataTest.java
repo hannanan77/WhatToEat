@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -16,14 +17,14 @@ import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import data_access.recipe_library.IngredientMeasureParser;
+import data_access.recipe_library.LocalRecipeImageCache;
+import data_access.recipe_library.TheMealDbRecipeMapper;
 import entity.Ingredient;
 import entity.Recipe;
-import recipe_library.data_access.IngredientMeasureParser;
-import recipe_library.data_access.LocalRecipeImageCache;
-import recipe_library.data_access.TheMealDbRecipeMapper;
-import recipe_library.use_case.library.DuplicateRecipeException;
-import recipe_library.use_case.library.RecipeLibraryRecord;
-import recipe_library.use_case.online_recipe.OnlineRecipe;
+import use_case.recipe_library.DuplicateRecipeException;
+import use_case.recipe_library.RecipeLibraryRecord;
+import use_case.recipe_library.OnlineRecipe;
 import use_case.add_recipe.AddRecipeDataAccessInterface;
 
 class RecipeImportDataTest {
@@ -39,6 +40,15 @@ class RecipeImportDataTest {
         assertMeasure(1.5, "tbsp", IngredientMeasureParser.parse("1 1/2 tbsp"));
         assertMeasure(200.0, "g", IngredientMeasureParser.parse("200g"));
         assertMeasure(null, "to taste", IngredientMeasureParser.parse("to taste"));
+    }
+
+    @Test
+    void parsesUnicodeFractionsWithoutAbsorbingTheWholeNumber() {
+        assertMeasure(1.5, "cups", IngredientMeasureParser.parse("1½ cups"));
+        assertMeasure(2.25, "tsp", IngredientMeasureParser.parse("2¼ tsp"));
+        assertMeasure(0.5, "cup", IngredientMeasureParser.parse("½ cup"));
+        assertMeasure(1.5, "cups", IngredientMeasureParser.parse("1 1/2 cups"));
+        assertMeasure(null, "a pinch", IngredientMeasureParser.parse("a pinch"));
     }
 
     @Test
@@ -129,6 +139,38 @@ class RecipeImportDataTest {
         assertTrue(reloaded.existsBySourceId("52771"));
         assertEquals(tempDir.resolve("penne.jpg").toString(),
                 recipes.get(1).getRecipe().getImageUrl());
+    }
+
+    @Test
+    void missingLibraryStartsEmptyAndInvalidLibraryIsNotReplaced() throws Exception {
+        Path missing = tempDir.resolve("missing.json");
+        FileRecipeLibraryDataAccess emptyLibrary = new FileRecipeLibraryDataAccess(missing);
+        assertTrue(emptyLibrary.findAll().isEmpty());
+        emptyLibrary.save(new Recipe(
+                "local-soup",
+                "Vegetable soup",
+                List.of(new Ingredient("broth", 500.0, "ml")),
+                List.of("Simmer the broth."),
+                null,
+                4));
+        assertEquals(1, emptyLibrary.findAll().size());
+
+        Path broken = tempDir.resolve("broken.json");
+        String original = "{\"recipes\":\"invalid\"}";
+        Files.writeString(broken, original);
+        FileRecipeLibraryDataAccess brokenLibrary = new FileRecipeLibraryDataAccess(broken);
+        Recipe recipe = new Recipe(
+                "local-soup",
+                "Vegetable soup",
+                List.of(new Ingredient("broth", 500.0, "ml")),
+                List.of("Simmer the broth."),
+                null,
+                4);
+        assertThrows(IOException.class, brokenLibrary::findAll);
+        assertThrows(IOException.class, () -> brokenLibrary.save(recipe));
+        assertThrows(IOException.class, () -> brokenLibrary.saveImported(
+                recipe, "52771", "Dinner", OnlineRecipe.ATTRIBUTION));
+        assertEquals(original, Files.readString(broken));
     }
 
     @Test
