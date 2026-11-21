@@ -106,16 +106,14 @@ public class FileRecipeLibraryDataAccess implements
             return new ArrayList<>();
         }
         try {
-            JSONArray recipes = new JSONObject(json).optJSONArray("recipes");
-            List<JSONObject> objects = new ArrayList<>();
-            if (recipes == null) {
-                return objects;
+            JSONObject root = new JSONObject(json);
+            if (!root.has("recipes") || root.isNull("recipes")) {
+                throw new IOException("Saved recipes could not be read.");
             }
+            JSONArray recipes = root.getJSONArray("recipes");
+            List<JSONObject> objects = new ArrayList<>();
             for (int index = 0; index < recipes.length(); index++) {
-                JSONObject recipe = recipes.optJSONObject(index);
-                if (recipe != null) {
-                    objects.add(recipe);
-                }
+                objects.add(recipes.getJSONObject(index));
             }
             return objects;
         }

@@ -9,20 +9,25 @@ import recipe_library.use_case.search_online_recipes.SearchOnlineRecipesInputDat
 public class SearchOnlineRecipesController {
 
     private final SearchOnlineRecipesInputBoundary interactor;
+    private final SearchOnlineRecipesPresenter presenter;
     private final RecipeBrowserViewModel viewModel;
 
     public SearchOnlineRecipesController(SearchOnlineRecipesInputBoundary interactor,
+                                         SearchOnlineRecipesPresenter presenter,
                                          RecipeBrowserViewModel viewModel) {
         this.interactor = interactor;
+        this.presenter = presenter;
         this.viewModel = viewModel;
     }
 
     public void execute(String query) {
+        int request = presenter.startRequest();
         viewModel.setStatus("Searching TheMealDB...");
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() {
-                interactor.execute(new SearchOnlineRecipesInputData(query));
+                presenter.runRequest(request, () ->
+                        interactor.execute(new SearchOnlineRecipesInputData(query)));
                 return null;
             }
         }.execute();

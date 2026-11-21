@@ -61,8 +61,15 @@ public final class OnlineRecipe {
         return instructions;
     }
 
-    public String recipeId() {
+    /**
+     * Id stored for an imported meal. Selection uses this to find the saved copy.
+     */
+    public static String idForMeal(String mealId) {
         return "themealdb-" + mealId;
+    }
+
+    public String recipeId() {
+        return idForMeal(mealId);
     }
 
     /**
