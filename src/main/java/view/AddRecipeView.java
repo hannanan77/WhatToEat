@@ -1,5 +1,8 @@
 package view;
 
+import interface_adapter.add_recipe.AddRecipeController;
+import interface_adapter.add_recipe.AddRecipeViewModel;
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
@@ -9,7 +12,6 @@ import java.awt.*;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import interface_adapter.add_recipe.AddRecipeController;
 
 /**
  * The form for adding a personal recipe.
@@ -68,7 +70,17 @@ public class AddRecipeView extends JPanel {
     private final JLabel statusLabel =
             new JLabel("Fill in your recipe details.");
 
+    /**
+     * Creates a standalone view without a connected controller.
+     */
     public AddRecipeView() {
+        this(new AddRecipeViewModel());
+    }
+
+    /**
+     * Creates a view using the same ViewModel as its presenter.
+     */
+    public AddRecipeView(AddRecipeViewModel viewModel) {
         setLayout(new BorderLayout(10, 10));
         setBorder(new EmptyBorder(20, 20, 20, 20));
 
@@ -126,7 +138,6 @@ public class AddRecipeView extends JPanel {
         );
 
         formPanel.add(instructionsPanel);
-
         add(new JScrollPane(formPanel), BorderLayout.CENTER);
 
         JPanel bottomPanel =
@@ -135,9 +146,7 @@ public class AddRecipeView extends JPanel {
         bottomPanel.add(statusLabel, BorderLayout.CENTER);
         bottomPanel.add(saveButton, BorderLayout.EAST);
 
-        // Enabled when a controller is connected.
         saveButton.setEnabled(false);
-
         add(bottomPanel, BorderLayout.SOUTH);
 
         addIngredientButton.addActionListener(
@@ -155,6 +164,32 @@ public class AddRecipeView extends JPanel {
         saveButton.addActionListener(
                 event -> submitRecipe()
         );
+
+        // React to results prepared by the presenter.
+        viewModel.addPropertyChangeListener(event -> {
+            if (!"result".equals(event.getPropertyName())) {
+                return;
+            }
+
+            String message = viewModel.getMessage();
+            boolean successful = viewModel.isSuccessful();
+
+            Runnable updateView = () -> {
+                statusLabel.setText(message);
+                statusLabel.setToolTipText(message);
+
+                if (successful) {
+                    clearForm();
+                }
+            };
+
+            if (SwingUtilities.isEventDispatchThread()) {
+                updateView.run();
+            }
+            else {
+                SwingUtilities.invokeLater(updateView);
+            }
+        });
     }
 
     /**
@@ -290,7 +325,7 @@ public class AddRecipeView extends JPanel {
         ingredientTable.setRowHeight(26);
         ingredientTable.getTableHeader().setReorderingAllowed(false);
 
-        // Hide the unit in rows with an unknown quantity.
+        // Hide the unit when an ingredient's quantity is unknown.
         ingredientTable.getColumnModel().getColumn(2).setCellRenderer(
                 new DefaultTableCellRenderer() {
                     @Override
@@ -417,7 +452,7 @@ public class AddRecipeView extends JPanel {
     }
 
     /**
-     * Reads the form and passes plain values to the controller.
+     * Reads the form and passes its values to the controller.
      */
     private void submitRecipe() {
         if (controller == null) {
@@ -468,6 +503,29 @@ public class AddRecipeView extends JPanel {
                 imageUrlField.getText(),
                 servings
         );
+    }
+
+    /**
+     * Clears the form only after a successful save.
+     */
+    private void clearForm() {
+        nameField.setText("");
+        servingsSpinner.setValue(1);
+
+        imageUrlField.setText("");
+        imageUrlField.setToolTipText(null);
+
+        instructionsArea.setText("");
+
+        ingredientNameField.setText("");
+        ingredientTableModel.setRowCount(0);
+
+        quantitySpinner.setValue(1.0);
+        unitComboBox.setSelectedItem("g");
+        unknownQuantityCheckBox.setSelected(false);
+        updateQuantityVisibility();
+
+        nameField.requestFocusInWindow();
     }
 
     /**
