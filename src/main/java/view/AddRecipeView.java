@@ -1,387 +1,351 @@
 package view;
 
+import view.components.ThemeButton;
+import view.components.ThemeCard;
+import view.components.ThemeParagraph;
+import view.components.UiComponents;
+
 import interface_adapter.add_recipe.AddRecipeController;
 import interface_adapter.add_recipe.AddRecipeViewModel;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.ImageReadParam;
+import javax.imageio.stream.ImageInputStream;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
-/**
- * The form for adding a personal recipe.
- */
+/** Add Recipe form. All presentation values come from the shared UiTheme. */
 public class AddRecipeView extends JPanel {
-
     private AddRecipeController controller;
-
-    private final JTextField nameField = new JTextField(25);
-
-    private final JSpinner servingsSpinner = new JSpinner(
-            new SpinnerNumberModel(1, 1, 100, 1)
-    );
-
-    private final JTextField imageUrlField = new JTextField(25);
-
+    private final JTextField nameField = new JTextField();
+    private final JTextField imageUrlField = new JTextField();
+    private final JTextField ingredientNameField = new JTextField();
     private final JTextArea instructionsArea = new JTextArea(6, 30);
-
-    private final JTextField ingredientNameField = new JTextField(18);
-
+    private final JSpinner servingsSpinner = new JSpinner(
+            new SpinnerNumberModel(1, 1, 100, 1));
     private final JSpinner quantitySpinner = new JSpinner(
-            new SpinnerNumberModel(1.0, 0.25, 10000.0, 0.25)
-    );
-
+            new SpinnerNumberModel(1.0, 0.25, 10000.0, 0.25));
     private final JComboBox<String> unitComboBox = new JComboBox<>(
-            new String[]{
-                    "g", "kg", "mg", "ml", "L",
-                    "tsp", "tbsp", "cup", "piece"
-            }
-    );
+            new String[]{"g", "kg", "mg", "ml", "L", "tsp", "tbsp", "cup", "piece"});
+    private final JCheckBox unknownQuantityCheckBox = new JCheckBox("Quantity unknown");
+    private final JButton saveButton = new ThemeButton("Save Recipe", true);
+    private final JTextArea statusLabel = new JTextArea("Fill in your recipe details.");
+    private final ImagePreview imagePreview = new ImagePreview();
+    private final DefaultTableModel ingredientTableModel = new DefaultTableModel(
+            new Object[]{"Ingredient", "Quantity", "Unit"}, 0) {
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    };
+    private final JTable ingredientTable = new JTable(ingredientTableModel);
+    private int imageRequest;
+    private boolean imageLoading;
 
-    private final JCheckBox unknownQuantityCheckBox =
-            new JCheckBox("Quantity unknown");
-
-    private final JButton addIngredientButton =
-            new JButton("Add Ingredient");
-
-    private final JButton removeIngredientButton =
-            new JButton("Remove Selected");
-
-    private final DefaultTableModel ingredientTableModel =
-            new DefaultTableModel(
-                    new Object[]{"Ingredient", "Quantity", "Unit"}, 0
-            ) {
-                @Override
-                public boolean isCellEditable(int row, int column) {
-                    return false;
-                }
-            };
-
-    private final JTable ingredientTable =
-            new JTable(ingredientTableModel);
-
-    private final JButton saveButton = new JButton("Save Recipe");
-
-    private final JLabel statusLabel =
-            new JLabel("Fill in your recipe details.");
-
-    /**
-     * Creates a standalone view without a connected controller.
-     */
     public AddRecipeView() {
         this(new AddRecipeViewModel());
     }
 
-    /**
-     * Creates a view using the same ViewModel as its presenter.
-     */
     public AddRecipeView(AddRecipeViewModel viewModel) {
-        setLayout(new BorderLayout(10, 10));
-        setBorder(new EmptyBorder(20, 20, 20, 20));
-
+        super(new BorderLayout(0, UiTheme.SPACE_XL));
+        setBackground(UiTheme.BACKGROUND);
+        setBorder(new EmptyBorder(UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING,
+                UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING));
+        styleField(nameField);
+        styleField(imageUrlField);
+        styleField(ingredientNameField);
+        imageUrlField.setEditable(false);
         configureSpinner(servingsSpinner, "0");
         configureSpinner(quantitySpinner, "0.##");
+        configureUnits();
+        unknownQuantityCheckBox.setOpaque(false);
+        unknownQuantityCheckBox.setFont(UiTheme.BODY_FONT);
+        unknownQuantityCheckBox.setForeground(UiTheme.TEXT_PRIMARY);
+        unknownQuantityCheckBox.addActionListener(event -> updateQuantityVisibility());
 
-        JLabel titleLabel = new JLabel("Add My Own Recipe");
-        titleLabel.setFont(
-                titleLabel.getFont().deriveFont(Font.BOLD, 24f)
-        );
-        add(titleLabel, BorderLayout.NORTH);
+        JPanel header = panel(new BorderLayout(0, UiTheme.SPACE_SM));
+        JLabel title = new JLabel("Add My Own Recipe");
+        title.setFont(UiTheme.HEADING_FONT);
+        title.setForeground(UiTheme.TEXT_PRIMARY);
+        header.add(title, BorderLayout.NORTH);
+        ThemeParagraph subtitle = text("Save your favourite homemade recipes to your collection.");
+        header.add(subtitle, BorderLayout.CENTER);
+        add(header, BorderLayout.NORTH);
 
-        JPanel formPanel = new JPanel();
-        formPanel.setLayout(
-                new BoxLayout(formPanel, BoxLayout.Y_AXIS)
-        );
+        FormContent form = new FormContent();
+        form.setLayout(new BoxLayout(form, BoxLayout.Y_AXIS));
+        form.setOpaque(false);
+        form.setBorder(new EmptyBorder(0, 0, 0, UiTheme.SPACE_SM));
+        form.add(createDetailsPanel());
+        form.add(Box.createVerticalStrut(UiTheme.SPACE_XL));
+        form.add(createIngredientsPanel());
+        form.add(Box.createVerticalStrut(UiTheme.SPACE_XL));
+        form.add(createInstructionsPanel());
+        JScrollPane scroll = scrollPane(form);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getViewport().setBackground(UiTheme.BACKGROUND);
+        add(scroll, BorderLayout.CENTER);
 
-        formPanel.add(createRow("Recipe name:", nameField));
-        formPanel.add(Box.createVerticalStrut(10));
-
-        JPanel servingsPanel = new JPanel(
-                new FlowLayout(FlowLayout.LEFT, 0, 0)
-        );
-        servingsPanel.add(servingsSpinner);
-
-        formPanel.add(createRow("Servings:", servingsPanel));
-        formPanel.add(Box.createVerticalStrut(10));
-
-        formPanel.add(createRow(
-                "Image (optional):", createImagePanel()
-        ));
-        formPanel.add(Box.createVerticalStrut(15));
-
-        formPanel.add(createIngredientsPanel());
-        formPanel.add(Box.createVerticalStrut(15));
-
-        instructionsArea.setLineWrap(true);
-        instructionsArea.setWrapStyleWord(true);
-
-        JPanel instructionsPanel =
-                new JPanel(new BorderLayout(5, 5));
-
-        instructionsPanel.setBorder(
-                BorderFactory.createTitledBorder("Instructions")
-        );
-
-        instructionsPanel.add(
-                new JLabel("Enter one cooking step per line."),
-                BorderLayout.NORTH
-        );
-
-        instructionsPanel.add(
-                new JScrollPane(instructionsArea),
-                BorderLayout.CENTER
-        );
-
-        formPanel.add(instructionsPanel);
-        add(new JScrollPane(formPanel), BorderLayout.CENTER);
-
-        JPanel bottomPanel =
-                new JPanel(new BorderLayout(10, 10));
-
-        bottomPanel.add(statusLabel, BorderLayout.CENTER);
-        bottomPanel.add(saveButton, BorderLayout.EAST);
-
+        JPanel footer = panel(new BorderLayout(UiTheme.SPACE_LG, 0));
+        styleStatus();
+        footer.add(statusLabel, BorderLayout.CENTER);
+        JPanel actions = panel(new BorderLayout());
+        actions.add(saveButton, BorderLayout.NORTH);
+        footer.add(actions, BorderLayout.EAST);
+        add(footer, BorderLayout.SOUTH);
         saveButton.setEnabled(false);
-        add(bottomPanel, BorderLayout.SOUTH);
+        saveButton.addActionListener(event -> submitRecipe());
 
-        addIngredientButton.addActionListener(
-                event -> addIngredient()
-        );
-
-        removeIngredientButton.addActionListener(
-                event -> removeSelectedIngredient()
-        );
-
-        unknownQuantityCheckBox.addActionListener(
-                event -> updateQuantityVisibility()
-        );
-
-        saveButton.addActionListener(
-                event -> submitRecipe()
-        );
-
-        // React to results prepared by the presenter.
         viewModel.addPropertyChangeListener(event -> {
             if (!"result".equals(event.getPropertyName())) {
                 return;
             }
-
             String message = viewModel.getMessage();
             boolean successful = viewModel.isSuccessful();
-
-            Runnable updateView = () -> {
+            Runnable update = () -> {
                 statusLabel.setText(message);
                 statusLabel.setToolTipText(message);
-
+                statusLabel.setForeground(successful ? UiTheme.SECONDARY : UiTheme.ERROR);
                 if (successful) {
                     clearForm();
                 }
             };
-
             if (SwingUtilities.isEventDispatchThread()) {
-                updateView.run();
+                update.run();
             }
             else {
-                SwingUtilities.invokeLater(updateView);
+                SwingUtilities.invokeLater(update);
             }
         });
     }
 
-    /**
-     * Connects this view to its controller.
-     */
     public void setController(AddRecipeController controller) {
         this.controller = controller;
-        saveButton.setEnabled(controller != null);
+        saveButton.setEnabled(controller != null && !imageLoading);
     }
 
-    /**
-     * Builds the local image selection controls.
-     */
-    private JPanel createImagePanel() {
-        imageUrlField.setEditable(false);
-
-        JButton chooseImageButton = new JButton("Choose Image");
-        JButton removeImageButton = new JButton("Remove");
-
-        JPanel buttons = new JPanel(
-                new FlowLayout(FlowLayout.RIGHT, 5, 0)
-        );
-        buttons.add(chooseImageButton);
-        buttons.add(removeImageButton);
-
-        JPanel panel = new JPanel(new BorderLayout(5, 0));
-        panel.add(imageUrlField, BorderLayout.CENTER);
-        panel.add(buttons, BorderLayout.EAST);
-
-        chooseImageButton.addActionListener(
-                event -> chooseImage()
-        );
-
-        removeImageButton.addActionListener(event -> {
-            imageUrlField.setText("");
-            imageUrlField.setToolTipText(null);
+    /** Left: recipe information. Right: a proportionally scaled photo. */
+    private JPanel createDetailsPanel() {
+        JPanel fields = stack();
+        fields.add(labelled("Recipe name", nameField));
+        fields.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+        JPanel servingRow = panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        servingRow.add(servingsSpinner);
+        fields.add(labelled("Servings", servingRow));
+        fields.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+        fields.add(labelled("Image (optional)", imageUrlField));
+        fields.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+        // Two columns keep both actions visible even in a smaller window.
+        JPanel buttons = panel(new GridLayout(1, 2, UiTheme.SPACE_SM, 0));
+        JButton choose = new ThemeButton("Choose Image", false);
+        JButton remove = new ThemeButton("Remove Image", false);
+        choose.addActionListener(event -> chooseImage());
+        remove.addActionListener(event -> {
+            clearImage();
             statusLabel.setText("Image removed from the form.");
         });
+        buttons.add(choose);
+        buttons.add(remove);
+        fields.add(buttons);
 
-        return panel;
+        JPanel content = panel(new GridBagLayout());
+        GridBagConstraints left = new GridBagConstraints();
+        left.gridx = 0;
+        left.gridy = 0;
+        left.weightx = 0.62;
+        left.fill = GridBagConstraints.BOTH;
+        left.insets = new Insets(0, 0, 0, UiTheme.SPACE_XL);
+        int fieldsHeight = fields.getPreferredSize().height;
+        fields.setPreferredSize(new Dimension(390, fieldsHeight));
+        fields.setMinimumSize(new Dimension(240, fieldsHeight));
+        content.add(fields, left);
+        GridBagConstraints right = new GridBagConstraints();
+        right.gridx = 1;
+        right.gridy = 0;
+        right.weightx = 0.38;
+        right.fill = GridBagConstraints.BOTH;
+        imagePreview.setPreferredSize(new Dimension(260, 270));
+        imagePreview.setMinimumSize(new Dimension(140, 200));
+        content.add(imagePreview, right);
+        return card("Recipe details", content);
     }
 
-    /**
-     * Records the selected file's URI.
-     * The file is not copied or uploaded at this stage.
-     */
+    private JPanel createIngredientsPanel() {
+        JPanel content = stack();
+        content.add(labelled("Ingredient name", ingredientNameField));
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+        JPanel amounts = panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        amounts.add(quantitySpinner);
+        amounts.add(Box.createHorizontalStrut(UiTheme.SPACE_SM));
+        amounts.add(unitComboBox);
+        content.add(labelled("Quantity / unit", amounts));
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+        JPanel unknownRow = panel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        unknownRow.add(unknownQuantityCheckBox);
+        content.add(unknownRow);
+        JButton add = new ThemeButton("Add Ingredient", false);
+        add.addActionListener(event -> addIngredient());
+        content.add(rightAligned(add));
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+
+        ingredientTable.setFont(UiTheme.BODY_FONT);
+        ingredientTable.setForeground(UiTheme.TEXT_PRIMARY);
+        ingredientTable.setBackground(UiTheme.SURFACE);
+        ingredientTable.setRowHeight(Math.max(UiTheme.TABLE_ROW_MIN_HEIGHT,
+                ingredientTable.getFontMetrics(ingredientTable.getFont()).getHeight()
+                        + UiTheme.SPACE_LG));
+        ingredientTable.setSelectionBackground(UiTheme.MINT);
+        ingredientTable.setSelectionForeground(UiTheme.TEXT_PRIMARY);
+        ingredientTable.setGridColor(UiTheme.BORDER);
+        ingredientTable.setShowVerticalLines(false);
+        ingredientTable.setFillsViewportHeight(true);
+        ingredientTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        ingredientTable.getTableHeader().setReorderingAllowed(false);
+        ingredientTable.getTableHeader().setFont(UiTheme.LABEL_FONT);
+        ingredientTable.getTableHeader().setBackground(UiTheme.MINT);
+        ingredientTable.getTableHeader().setForeground(UiTheme.SECONDARY);
+        ingredientTable.getTableHeader().setPreferredSize(new Dimension(100, Math.max(UiTheme.TABLE_HEADER_MIN_HEIGHT,
+                ingredientTable.getTableHeader().getFontMetrics(UiTheme.LABEL_FONT).getHeight()
+                        + UiTheme.SPACE_LG)));
+        ingredientTable.setDefaultRenderer(Object.class, new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value,
+                                                           boolean selected, boolean focus, int row, int column) {
+                int modelRow = table.convertRowIndexToModel(row);
+                int modelColumn = table.convertColumnIndexToModel(column);
+                Object display = modelColumn == 2
+                        && ingredientTableModel.getValueAt(modelRow, 1) == null ? "" : value;
+                super.getTableCellRendererComponent(table, display, selected, focus, row, column);
+                setBorder(new EmptyBorder(0, UiTheme.SPACE_MD, 0, UiTheme.SPACE_MD));
+                return this;
+            }
+        });
+        JScrollPane tableScroll = scrollPane(ingredientTable);
+        tableScroll.setPreferredSize(new Dimension(400, 170));
+        content.add(tableScroll);
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+        JButton remove = new ThemeButton("Remove Selected", false);
+        remove.addActionListener(event -> removeSelectedIngredient());
+        content.add(rightAligned(remove));
+        return card("Ingredients", content);
+    }
+
+    private JPanel createInstructionsPanel() {
+        JPanel body = panel(new BorderLayout(0, UiTheme.SPACE_MD));
+        body.add(text("Enter one cooking step per line."), BorderLayout.NORTH);
+        instructionsArea.setFont(UiTheme.BODY_FONT);
+        instructionsArea.setForeground(UiTheme.TEXT_PRIMARY);
+        instructionsArea.setBackground(UiTheme.SURFACE);
+        instructionsArea.setCaretColor(UiTheme.SECONDARY);
+        instructionsArea.setLineWrap(true);
+        instructionsArea.setWrapStyleWord(true);
+        instructionsArea.setBorder(new EmptyBorder(UiTheme.INPUT_PADDING_Y, UiTheme.INPUT_PADDING_X,
+                UiTheme.INPUT_PADDING_Y, UiTheme.INPUT_PADDING_X));
+        JScrollPane scroll = scrollPane(instructionsArea);
+        scroll.setPreferredSize(new Dimension(400, 180));
+        body.add(scroll, BorderLayout.CENTER);
+        return card("Instructions", body);
+    }
+
+    /** Decode outside the Swing event thread so selecting a photo does not freeze the form. */
     private void chooseImage() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Choose a recipe image");
-        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
         chooser.setAcceptAllFileFilterUsed(false);
-
-        FileNameExtensionFilter imageFilter =
-                new FileNameExtensionFilter(
-                        "Image files (*.jpg, *.jpeg, *.png)",
-                        "jpg", "jpeg", "png"
-                );
-
-        chooser.setFileFilter(imageFilter);
-
-        int result = chooser.showOpenDialog(this);
-
-        if (result != JFileChooser.APPROVE_OPTION) {
+        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+        FileNameExtensionFilter filter = new FileNameExtensionFilter(
+                "Image files (*.jpg, *.jpeg, *.png)", "jpg", "jpeg", "png");
+        chooser.setFileFilter(filter);
+        if (chooser.showOpenDialog(this) != JFileChooser.APPROVE_OPTION) {
             return;
         }
-
-        File selectedFile = chooser.getSelectedFile();
-
-        if (!selectedFile.isFile()
-                || !selectedFile.canRead()
-                || !imageFilter.accept(selectedFile)) {
-            statusLabel.setText(
-                    "Please choose a readable JPG or PNG file."
-            );
+        File file = chooser.getSelectedFile();
+        if (!file.isFile() || !file.canRead() || !filter.accept(file)) {
+            statusLabel.setText("Please choose a readable JPG or PNG file.");
             return;
         }
+        int request = ++imageRequest;
+        imageLoading = true;
+        saveButton.setEnabled(false);
+        statusLabel.setText("Loading image preview...");
+        new SwingWorker<BufferedImage, Void>() {
+            @Override
+            protected BufferedImage doInBackground() throws IOException {
+                return readPreview(file);
+            }
 
-        imageUrlField.setText(selectedFile.toURI().toString());
-        imageUrlField.setToolTipText(selectedFile.getAbsolutePath());
-
-        statusLabel.setText(
-                "Image selected: " + selectedFile.getName()
-        );
-    }
-
-    /**
-     * Builds the ingredient controls and table.
-     */
-    private JPanel createIngredientsPanel() {
-        JPanel panel = new JPanel(new BorderLayout(8, 8));
-
-        panel.setBorder(
-                BorderFactory.createTitledBorder("Ingredients")
-        );
-
-        JPanel inputs = new JPanel();
-        inputs.setLayout(
-                new BoxLayout(inputs, BoxLayout.Y_AXIS)
-        );
-
-        inputs.add(createRow(
-                "Ingredient name:", ingredientNameField
-        ));
-
-        JPanel quantityControls = new JPanel(
-                new FlowLayout(FlowLayout.LEFT, 0, 0)
-        );
-
-        quantityControls.add(quantitySpinner);
-        quantityControls.add(Box.createHorizontalStrut(10));
-        quantityControls.add(unitComboBox);
-        quantityControls.add(Box.createHorizontalStrut(10));
-        quantityControls.add(unknownQuantityCheckBox);
-
-        inputs.add(Box.createVerticalStrut(8));
-        inputs.add(createRow(
-                "Quantity / unit:", quantityControls
-        ));
-
-        JPanel addButtonPanel = new JPanel(
-                new FlowLayout(FlowLayout.RIGHT, 0, 0)
-        );
-        addButtonPanel.add(addIngredientButton);
-
-        inputs.add(Box.createVerticalStrut(8));
-        inputs.add(addButtonPanel);
-
-        panel.add(inputs, BorderLayout.NORTH);
-
-        ingredientTable.setSelectionMode(
-                ListSelectionModel.SINGLE_SELECTION
-        );
-        ingredientTable.setRowHeight(26);
-        ingredientTable.getTableHeader().setReorderingAllowed(false);
-
-        // Hide the unit when an ingredient's quantity is unknown.
-        ingredientTable.getColumnModel().getColumn(2).setCellRenderer(
-                new DefaultTableCellRenderer() {
-                    @Override
-                    public Component getTableCellRendererComponent(
-                            JTable table,
-                            Object value,
-                            boolean isSelected,
-                            boolean hasFocus,
-                            int row,
-                            int column) {
-
-                        int modelRow =
-                                table.convertRowIndexToModel(row);
-
-                        Object quantity =
-                                ingredientTableModel.getValueAt(
-                                        modelRow, 1
-                                );
-
-                        Object displayedUnit =
-                                quantity == null ? "" : value;
-
-                        return super.getTableCellRendererComponent(
-                                table,
-                                displayedUnit,
-                                isSelected,
-                                hasFocus,
-                                row,
-                                column
-                        );
-                    }
+            @Override
+            protected void done() {
+                // Ignore an older selection if the user chose again or removed it.
+                if (request != imageRequest) {
+                    return;
                 }
-        );
-
-        JScrollPane tableScrollPane =
-                new JScrollPane(ingredientTable);
-
-        tableScrollPane.setPreferredSize(
-                new Dimension(500, 130)
-        );
-
-        panel.add(tableScrollPane, BorderLayout.CENTER);
-
-        JPanel removeButtonPanel = new JPanel(
-                new FlowLayout(FlowLayout.RIGHT, 0, 0)
-        );
-        removeButtonPanel.add(removeIngredientButton);
-
-        panel.add(removeButtonPanel, BorderLayout.SOUTH);
-
-        return panel;
+                imageLoading = false;
+                saveButton.setEnabled(controller != null);
+                try {
+                    BufferedImage image = get();
+                    imagePreview.setImage(image);
+                    imageUrlField.setText(file.toURI().toString());
+                    imageUrlField.setCaretPosition(0);
+                    imageUrlField.setToolTipText(file.getAbsolutePath());
+                    statusLabel.setText("Image selected: " + file.getName());
+                }
+                catch (Exception exception) {
+                    statusLabel.setText("Cannot read this image. Please choose another JPG or PNG.");
+                    statusLabel.setForeground(UiTheme.ERROR);
+                }
+            }
+        }.execute();
     }
 
-    /**
-     * Adds an ingredient to the temporary form data.
-     */
+    /** Subsample large photos: only a preview is kept in memory, never rewriting the original. */
+    private static BufferedImage readPreview(File file) throws IOException {
+        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
+            if (input == null) {
+                throw new IOException("Cannot open image.");
+            }
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) {
+                throw new IOException("Unsupported image.");
+            }
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int largest = Math.max(reader.getWidth(0), reader.getHeight(0));
+                int sample = Math.max(1, (int) Math.ceil(largest / 1200.0));
+                ImageReadParam options = reader.getDefaultReadParam();
+                options.setSourceSubsampling(sample, sample, 0, 0);
+                BufferedImage image = reader.read(0, options);
+                if (image == null) {
+                    throw new IOException("Cannot decode image.");
+                }
+                return image;
+            }
+            finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    private void clearImage() {
+        imageRequest++;
+        imageLoading = false;
+        imageUrlField.setText("");
+        imageUrlField.setToolTipText(null);
+        imagePreview.setImage(null);
+        saveButton.setEnabled(controller != null);
+    }
     private void addIngredient() {
         String ingredientName =
                 ingredientNameField.getText().trim();
@@ -455,6 +419,10 @@ public class AddRecipeView extends JPanel {
      * Reads the form and passes its values to the controller.
      */
     private void submitRecipe() {
+        if (imageLoading) {
+            statusLabel.setText("Please wait for the image preview to finish loading.");
+            return;
+        }
         if (controller == null) {
             statusLabel.setText("Saving is not connected yet.");
             return;
@@ -512,8 +480,7 @@ public class AddRecipeView extends JPanel {
         nameField.setText("");
         servingsSpinner.setValue(1);
 
-        imageUrlField.setText("");
-        imageUrlField.setToolTipText(null);
+        clearImage();
 
         instructionsArea.setText("");
 
@@ -528,61 +495,156 @@ public class AddRecipeView extends JPanel {
         nameField.requestFocusInWindow();
     }
 
-    /**
-     * Uses arrows or the mouse wheel instead of typed numbers.
-     */
-    private void configureSpinner(JSpinner spinner, String format) {
-        JSpinner.NumberEditor editor =
-                new JSpinner.NumberEditor(spinner, format);
-
-        spinner.setEditor(editor);
-        editor.getTextField().setEditable(false);
-        spinner.setPreferredSize(new Dimension(110, 30));
-
-        spinner.addMouseWheelListener(event -> {
-            if (!spinner.isEnabled() || !spinner.isVisible()) {
-                return;
-            }
-
-            int rotation = event.getWheelRotation();
-
-            for (int step = 0; step < Math.abs(rotation); step++) {
-                Object nextValue;
-
-                if (rotation < 0) {
-                    nextValue = spinner.getNextValue();
-                }
-                else {
-                    nextValue = spinner.getPreviousValue();
-                }
-
-                if (nextValue == null) {
-                    break;
-                }
-
-                spinner.setValue(nextValue);
-            }
-
-            event.consume();
-        });
+    private static void configureSpinner(JSpinner spinner, String format) {
+        UiComponents.styleSpinner(spinner, format);
     }
 
-    /**
-     * Places a label and an input component on the same row.
-     */
-    private JPanel createRow(String labelText, JComponent input) {
-        JPanel row = new JPanel(new BorderLayout(10, 0));
+    private void configureUnits() {
+        UiComponents.styleComboBox(unitComboBox);
+    }
 
-        JLabel label = new JLabel(labelText);
-        label.setPreferredSize(new Dimension(160, 30));
+    private void styleStatus() {
+        statusLabel.setFont(UiTheme.BODY_FONT);
+        statusLabel.setForeground(UiTheme.SECONDARY);
+        statusLabel.setOpaque(false);
+        statusLabel.setEditable(false);
+        statusLabel.setFocusable(false);
+        statusLabel.setLineWrap(true);
+        statusLabel.setWrapStyleWord(true);
+        statusLabel.setRows(2);
+    }
 
-        row.add(label, BorderLayout.WEST);
+    private static void styleField(JTextField field) {
+        UiComponents.styleTextField(field);
+    }
+
+    private static ThemeParagraph text(String value) {
+        return new ThemeParagraph(value);
+    }
+
+    private static JPanel panel(LayoutManager layout) {
+        JPanel panel = new JPanel(layout);
+        panel.setOpaque(false);
+        return panel;
+    }
+
+    private static JPanel labelled(String title, JComponent input) {
+        JPanel row = panel(new BorderLayout(0, UiTheme.SPACE_SM));
+        JLabel label = new JLabel(title);
+        label.setFont(UiTheme.LABEL_FONT);
+        label.setForeground(UiTheme.TEXT_PRIMARY);
+        label.setLabelFor(input);
+        row.add(label, BorderLayout.NORTH);
         row.add(input, BorderLayout.CENTER);
-
-        row.setMaximumSize(
-                new Dimension(Integer.MAX_VALUE, 40)
-        );
-
         return row;
+    }
+
+    private static JPanel rightAligned(JButton button) {
+        JPanel row = panel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        row.add(button);
+        return row;
+    }
+
+    private static JPanel stack() {
+        return new JPanel(new GridBagLayout()) {
+            private int row;
+            {
+                setOpaque(false);
+            }
+            @Override
+            protected void addImpl(Component component, Object constraints, int index) {
+                GridBagConstraints position = new GridBagConstraints();
+                position.gridx = 0;
+                position.gridy = row++;
+                position.weightx = 1;
+                position.fill = GridBagConstraints.HORIZONTAL;
+                position.anchor = GridBagConstraints.NORTHWEST;
+                super.addImpl(component, position, index);
+            }
+        };
+    }
+
+    private static JPanel card(String title, JPanel content) {
+        return new ThemeCard(title, content);
+    }
+
+    private static JScrollPane scrollPane(Component content) {
+        return UiComponents.scrollPane(content);
+    }
+
+    private static Graphics2D smooth(Graphics graphics) {
+        Graphics2D g = (Graphics2D) graphics.create();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        return g;
+    }
+
+    private static class FormContent extends JPanel implements Scrollable {
+        @Override
+        public Dimension getPreferredScrollableViewportSize() {
+            return new Dimension(800, 600);
+        }
+        @Override
+        public boolean getScrollableTracksViewportWidth() {
+            return true;
+        }
+        @Override
+        public boolean getScrollableTracksViewportHeight() {
+            return false;
+        }
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visible, int orientation, int direction) {
+            return UiTheme.SCROLL_INCREMENT;
+        }
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visible, int orientation, int direction) {
+            return Math.max(UiTheme.SCROLL_INCREMENT, visible.height - UiTheme.SCROLL_INCREMENT);
+        }
+    }
+
+    /** Paints the selected photo with its aspect ratio preserved, inside a rounded frame. */
+    private static class ImagePreview extends JPanel {
+        private BufferedImage image;
+        ImagePreview() {
+            setOpaque(false);
+            setToolTipText("Preview of the selected recipe image");
+        }
+        void setImage(BufferedImage image) {
+            this.image = image;
+            repaint();
+        }
+        @Override
+        protected void paintComponent(Graphics graphics) {
+            super.paintComponent(graphics);
+            Graphics2D g = smooth(graphics);
+            int width = getWidth() - 1;
+            int height = getHeight() - 1;
+            int arc = UiTheme.CARD_RADIUS * 2;
+            g.setColor(UiTheme.MINT);
+            g.fillRoundRect(0, 0, width, height, arc, arc);
+            if (image != null) {
+                double ratio = Math.min(Math.max(1, width - 24) / (double) image.getWidth(),
+                        Math.max(1, height - 24) / (double) image.getHeight());
+                int scaledWidth = Math.max(1, (int) Math.round(image.getWidth() * ratio));
+                int scaledHeight = Math.max(1, (int) Math.round(image.getHeight() * ratio));
+                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g.clip(new java.awt.geom.RoundRectangle2D.Double(0, 0, width, height, arc, arc));
+                g.drawImage(image, (width - scaledWidth) / 2, (height - scaledHeight) / 2,
+                        scaledWidth, scaledHeight, null);
+            }
+            else {
+                g.setColor(UiTheme.SECONDARY);
+                g.setFont(UiTheme.SECTION_HEADING_FONT);
+                String title = "Image preview";
+                g.drawString(title, (width - g.getFontMetrics().stringWidth(title)) / 2, height / 2);
+                g.setFont(UiTheme.BODY_FONT);
+                g.setColor(UiTheme.TEXT_SECONDARY);
+                String hint = "Choose a JPG or PNG";
+                g.drawString(hint, (width - g.getFontMetrics().stringWidth(hint)) / 2, height / 2 + 25);
+            }
+            g.setColor(UiTheme.BORDER);
+            g.drawRoundRect(0, 0, width, height, arc, arc);
+            g.dispose();
+        }
     }
 }
