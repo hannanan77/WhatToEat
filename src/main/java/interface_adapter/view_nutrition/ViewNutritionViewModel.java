@@ -110,6 +110,8 @@ public class ViewNutritionViewModel {
                 ? "Servings unavailable"
                 : servings + (servings == 1 ? " serving" : " servings");
         clearNutritionData();
+        totalValues = loadingValues();
+        perServingValues = loadingValues();
         statusMessage = "Retrieving nutrition information from USDA.";
         loading = true;
         error = false;
@@ -156,6 +158,12 @@ public class ViewNutritionViewModel {
     private static String[] unavailableValues() {
         return new String[] {
             "Not Available", "Not Available", "Not Available", "Not Available"
+        };
+    }
+
+    private static String[] loadingValues() {
+        return new String[] {
+            "Calculating...", "Calculating...", "Calculating...", "Calculating..."
         };
     }
 }

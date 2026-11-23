@@ -19,9 +19,12 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
@@ -189,7 +192,7 @@ class ViewNutritionViewTest {
     }
 
     @Test
-    void loadingAndErrorClearThePreviousRecipeEstimateNotice() throws Exception {
+    void loadingErrorAndRetryUseStableSummaryPlaceholders() throws Exception {
         final FakeNutritionDataAccess dataAccess = new FakeNutritionDataAccess();
         dataAccess.addNutrition("Estimated Ingredient", completeNutrition());
         dataAccess.addEstimatedWeight("Estimated Ingredient", 100.0);
@@ -200,19 +203,40 @@ class ViewNutritionViewTest {
         final CountDownLatch started = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
         final CountDownLatch finished = new CountDownLatch(1);
+        final CountDownLatch retryStarted = new CountDownLatch(1);
+        final CountDownLatch releaseRetry = new CountDownLatch(1);
+        final CountDownLatch retryFinished = new CountDownLatch(1);
+        final AtomicInteger attemptCount = new AtomicInteger();
+        final AtomicInteger loadingNotifications = new AtomicInteger();
         final ViewNutritionPresenter presenter =
                 new ViewNutritionPresenter(rendered.viewModel);
+        final ViewNutritionInteractor successfulInteractor =
+                new ViewNutritionInteractor(dataAccess, presenter);
         final ViewNutritionController controller = new ViewNutritionController(inputData -> {
-            started.countDown();
-            await(release);
-            presenter.prepareFailView(inputData.getRequestId(),
-                    "Nutrition service is unavailable.");
-            finished.countDown();
+            if (attemptCount.incrementAndGet() == 1) {
+                started.countDown();
+                await(release);
+                presenter.prepareFailView(inputData.getRequestId(),
+                        "Nutrition service is unavailable.");
+                finished.countDown();
+            }
+            else {
+                retryStarted.countDown();
+                await(releaseRetry);
+                successfulInteractor.execute(inputData);
+                retryFinished.countDown();
+            }
         }, rendered.viewModel);
+        rendered.view.setViewNutritionController(controller);
+        rendered.viewModel.addPropertyChangeListener(event -> {
+            if (rendered.viewModel.isLoading()) {
+                loadingNotifications.incrementAndGet();
+            }
+        });
 
         try {
             onEventThread(() -> {
-                controller.execute(recipe);
+                rendered.view.requestNutrition();
                 return null;
             });
             assertTrue(started.await(2, TimeUnit.SECONDS));
@@ -220,6 +244,18 @@ class ViewNutritionViewTest {
             assertEquals("Calculating nutrition",
                     component(rendered.view, "nutrition-status-title", JLabel.class)
                             .getText());
+            assertArrayEquals(new String[] {
+                "Calculating...", "Calculating...", "Calculating...", "Calculating..."
+            }, rendered.viewModel.getTotalValues());
+            assertArrayEquals(new String[] {
+                "Calculating...", "Calculating...", "Calculating...", "Calculating..."
+            }, rendered.viewModel.getPerServingValues());
+            assertEquals(8, countLabelsWithText(rendered.view, "Calculating..."));
+            assertEquals(1, loadingNotifications.get());
+            final JProgressBar loadingIndicator = component(rendered.view,
+                    "nutrition-loading-indicator", JProgressBar.class);
+            assertTrue(loadingIndicator.isVisible());
+            assertFalse(loadingIndicator.isIndeterminate());
 
             release.countDown();
             assertTrue(finished.await(2, TimeUnit.SECONDS));
@@ -229,9 +265,32 @@ class ViewNutritionViewTest {
                     component(rendered.view, "nutrition-status-title", JLabel.class)
                             .getText());
             assertTrue(rendered.viewModel.isError());
+            assertEquals(0, countLabelsWithText(rendered.view, "Calculating..."));
+            assertEquals(8, countLabelsWithText(rendered.view, "Not Available"));
+
+            onEventThread(() -> {
+                component(rendered.view, "nutrition-retry-button", JButton.class)
+                        .doClick();
+                return null;
+            });
+            assertTrue(retryStarted.await(2, TimeUnit.SECONDS));
+            assertEquals("Calculating nutrition",
+                    component(rendered.view, "nutrition-status-title", JLabel.class)
+                            .getText());
+            assertEquals(8, countLabelsWithText(rendered.view, "Calculating..."));
+            assertEquals(2, loadingNotifications.get());
+
+            releaseRetry.countDown();
+            assertTrue(retryFinished.await(2, TimeUnit.SECONDS));
+            onEventThread(() -> null);
+            assertFalse(rendered.viewModel.isLoading());
+            assertFalse(rendered.viewModel.isError());
+            assertEquals(0, countLabelsWithText(rendered.view, "Calculating..."));
+            assertEquals(0, countLabelsWithText(rendered.view, "Not Available"));
         }
         finally {
             release.countDown();
+            releaseRetry.countDown();
         }
     }
 
@@ -393,6 +452,19 @@ class ViewNutritionViewTest {
             }
         }
         return null;
+    }
+
+    private static int countLabelsWithText(Container root, String text) {
+        int count = 0;
+        for (Component child : root.getComponents()) {
+            if (child instanceof JLabel && text.equals(((JLabel) child).getText())) {
+                count++;
+            }
+            if (child instanceof Container) {
+                count += countLabelsWithText((Container) child, text);
+            }
+        }
+        return count;
     }
 
     private static <T> T onEventThread(Callable<T> action) throws Exception {

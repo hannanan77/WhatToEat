@@ -1,4 +1,3 @@
-
 package data_access;
 
 import java.io.BufferedReader;
@@ -10,9 +9,11 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import entity.Ingredient;
@@ -24,7 +25,7 @@ import use_case.view_nutrition.NutritionDataAccessInterface;
 
 /**
  * Retrieves per-100-gram nutrition values from USDA FoodData Central.
- * The first relevance-ranked search result containing a supported nutrient is used.
+ * Selects the most suitable basic food match with supported nutrients.
  */
 public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
 
@@ -40,7 +41,21 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
 
     private static final int CONNECT_TIMEOUT_MILLISECONDS = 8000;
     private static final int READ_TIMEOUT_MILLISECONDS = 8000;
-    private static final int SEARCH_RESULT_LIMIT = 10;
+    private static final int SEARCH_RESULT_LIMIT = 25;
+
+    private static final Set<String> IGNORED_MATCH_WORDS = Set.of(
+            "and", "or", "with", "without", "style");
+    private static final Set<String> PREPARATION_WORDS = Set.of(
+            "raw", "cooked", "boiled", "roasted", "grilled", "baked",
+            "dried", "dehydrated", "powder", "fried", "breaded",
+            "battered", "canned", "frozen", "pickled");
+    private static final Set<String> UNREQUESTED_PROCESSED_WORDS = Set.of(
+            "dried", "dehydrated", "powder", "fried", "breaded", "battered",
+            "ring", "soup", "sauce", "dressing", "dip", "spread", "snack",
+            "chip", "bread", "lunchmeat", "luncheon", "nugget", "patty",
+            "sausage", "pickled", "relish", "juice", "seasoning");
+    private static final Set<String> BUTTER_SUBSTITUTE_WORDS = Set.of(
+            "peanut", "almond", "cashew", "sunflower", "apple", "cocoa");
 
     private final String apiKey;
     private final HttpGateway httpGateway;
@@ -76,7 +91,7 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
     private Optional<IngredientNutritionData> loadNutrition(String ingredientName) {
         try {
             final String response = httpGateway.get(createSearchUrl(ingredientName));
-            return parseResponse(response);
+            return parseResponse(response, ingredientName);
         }
         catch (IOException exception) {
             throw new UncheckedIOException(
@@ -181,9 +196,10 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
     }
 
     private String createSearchUrl(String ingredientName) {
+        final String normalizedQuery = ingredientName.toLowerCase(Locale.ROOT);
         return SEARCH_URL
                 + "?api_key=" + encode(apiKey)
-                + "&query=" + encode(ingredientName)
+                + "&query=" + encode(normalizedQuery)
                 + "&pageSize=" + SEARCH_RESULT_LIMIT;
     }
 
@@ -191,8 +207,11 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
         return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
-    private Optional<IngredientNutritionData> parseResponse(String response) {
+    private Optional<IngredientNutritionData> parseResponse(String response,
+                                                             String ingredientName) {
         final JSONArray foods = new JSONObject(response).getJSONArray("foods");
+        IngredientNutritionData bestNutrition = null;
+        int bestScore = Integer.MIN_VALUE;
         for (int index = 0; index < foods.length(); index++) {
             final JSONObject food = foods.optJSONObject(index);
             if (food == null) {
@@ -201,10 +220,118 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
 
             final Optional<IngredientNutritionData> nutrition = parseFood(food);
             if (nutrition.isPresent()) {
-                return nutrition;
+                final int score = matchScore(ingredientName, food, nutrition.get());
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestNutrition = nutrition.get();
+                }
             }
         }
-        return Optional.empty();
+        return Optional.ofNullable(bestNutrition);
+    }
+
+    private int matchScore(String ingredientName, JSONObject food,
+                           IngredientNutritionData nutrition) {
+        final Set<String> requestedWords = matchWords(ingredientName);
+        final Set<String> descriptionWords = matchWords(
+                food.optString("description", ""));
+        if (requestedWords.isEmpty() || !descriptionWords.containsAll(requestedWords)) {
+            return Integer.MIN_VALUE;
+        }
+
+        for (String processedWord : UNREQUESTED_PROCESSED_WORDS) {
+            if (descriptionWords.contains(processedWord)
+                    && !requestedWords.contains(processedWord)) {
+                return Integer.MIN_VALUE;
+            }
+        }
+        if (requestedWords.size() == 1 && requestedWords.contains("butter")) {
+            for (String substitute : BUTTER_SUBSTITUTE_WORDS) {
+                if (descriptionWords.contains(substitute)) {
+                    return Integer.MIN_VALUE;
+                }
+            }
+        }
+
+        final String dataType = food.optString("dataType", "");
+        int score = dataTypeScore(dataType) + nutrientCompleteness(nutrition) * 20;
+        final Set<String> requestedPreparation = new HashSet<>(requestedWords);
+        requestedPreparation.retainAll(PREPARATION_WORDS);
+        if (!requestedPreparation.isEmpty()) {
+            score += 60;
+        }
+        // Prefer raw food when the ingredient does not specify preparation.
+        else if (descriptionWords.contains("raw")) {
+            score += 50;
+        }
+
+        final String normalizedIngredient = normalizeForMatch(ingredientName);
+        final String normalizedDescription = normalizeForMatch(
+                food.optString("description", ""));
+        if (normalizedDescription.equals(normalizedIngredient)) {
+            score += 100;
+        }
+        else if (normalizedDescription.startsWith(normalizedIngredient + " ")) {
+            score += 40;
+        }
+        score -= Math.min(30, Math.max(0,
+                descriptionWords.size() - requestedWords.size()) * 2);
+        return score;
+    }
+
+    private int dataTypeScore(String dataType) {
+        if ("Foundation".equalsIgnoreCase(dataType)) {
+            return 50;
+        }
+        if ("SR Legacy".equalsIgnoreCase(dataType)) {
+            return 40;
+        }
+        if (dataType.toLowerCase(Locale.ROOT).contains("survey")) {
+            return 20;
+        }
+        if ("Branded".equalsIgnoreCase(dataType)) {
+            return -60;
+        }
+        return 10;
+    }
+
+    private int nutrientCompleteness(IngredientNutritionData nutrition) {
+        int count = 0;
+        count += nutrition.getCaloriesKcalPer100g() == null ? 0 : 1;
+        count += nutrition.getProteinGPer100g() == null ? 0 : 1;
+        count += nutrition.getCarbohydratesGPer100g() == null ? 0 : 1;
+        count += nutrition.getFatGPer100g() == null ? 0 : 1;
+        return count;
+    }
+
+    private Set<String> matchWords(String value) {
+        final Set<String> words = new HashSet<>();
+        for (String word : normalizeForMatch(value).split("\\s+")) {
+            final String canonicalWord = canonicalMatchWord(word);
+            if (!canonicalWord.isEmpty()
+                    && !IGNORED_MATCH_WORDS.contains(canonicalWord)) {
+                words.add(canonicalWord);
+            }
+        }
+        return words;
+    }
+
+    private String normalizeForMatch(String value) {
+        return value.toLowerCase(Locale.ROOT).trim()
+                .replaceAll("[^a-z0-9]+", " ").trim();
+    }
+
+    private String canonicalMatchWord(String word) {
+        if ("powdered".equals(word)) {
+            return "powder";
+        }
+        if ("flakes".equals(word) || "flaked".equals(word)) {
+            return "flake";
+        }
+        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss")) {
+            return word.substring(0, word.length() - 1);
+        }
+        return word;
     }
 
     private Optional<IngredientNutritionData> parseFood(JSONObject food) {

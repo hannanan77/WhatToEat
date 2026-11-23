@@ -195,7 +195,6 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                     "The Nutrition controller has not been configured.");
             return;
         }
-        showLoadingState();
         controller.execute(selectedRecipe);
     }
 
@@ -283,12 +282,17 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         textPanel.add(statusTitleLabel, BorderLayout.NORTH);
         textPanel.add(statusArea, BorderLayout.CENTER);
 
-        loadingIndicator.setIndeterminate(true);
+        loadingIndicator.setIndeterminate(false);
+        loadingIndicator.setMinimum(0);
+        loadingIndicator.setMaximum(1);
+        loadingIndicator.setValue(1);
         loadingIndicator.setBorderPainted(false);
         loadingIndicator.setBackground(UiTheme.BACKGROUND);
         loadingIndicator.setForeground(UiTheme.PRIMARY);
         loadingIndicator.setPreferredSize(new Dimension(120, 4));
         loadingIndicator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 4));
+        loadingIndicator.setName("nutrition-loading-indicator");
+        retryButton.setName("nutrition-retry-button");
 
         retryButton.setPreferredSize(
                 new Dimension(80, UiTheme.BUTTON_MIN_HEIGHT));
@@ -478,7 +482,9 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             setCalculationNote(null);
             recipeNameLabel.setText(viewModel.getRecipeName());
             servingsLabel.setText(viewModel.getServings());
-            clearNutritionValues();
+            updateValueLabels(totalValueLabels, viewModel.getTotalValues());
+            updateValueLabels(perServingValueLabels, viewModel.getPerServingValues());
+            clearIngredientRows();
             showLoadingState();
             return;
         }
@@ -520,7 +526,6 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private void showLoadingState() {
-        clearNutritionValues();
         showBanner(BannerType.LOADING, "Calculating nutrition",
                 "Retrieving ingredient nutrition and calculating recipe totals.");
     }
@@ -645,6 +650,10 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         };
         updateValueLabels(totalValueLabels, unavailable);
         updateValueLabels(perServingValueLabels, unavailable);
+        clearIngredientRows();
+    }
+
+    private void clearIngredientRows() {
         tableModel.setRowCount(0);
         ingredientCountLabel.setText("0 ingredients");
     }
