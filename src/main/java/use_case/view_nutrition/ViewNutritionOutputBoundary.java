@@ -7,5 +7,5 @@ public interface ViewNutritionOutputBoundary {
 
     void prepareSuccessView(ViewNutritionOutputData outputData);
 
-    void prepareFailView(String errorMessage);
+    void prepareFailView(long requestId, String errorMessage);
 }

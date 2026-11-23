@@ -32,20 +32,23 @@ public class ViewNutritionInteractor implements ViewNutritionInputBoundary {
 
     @Override
     public void execute(ViewNutritionInputData inputData) {
+        final long requestId = inputData == null ? 0L : inputData.getRequestId();
         if (inputData == null || inputData.getRecipe() == null) {
-            presenter.prepareFailView("Select a recipe before viewing nutrition.");
+            presenter.prepareFailView(requestId,
+                    "Select a recipe before viewing nutrition.");
             return;
         }
 
         try {
-            calculateNutrition(inputData.getRecipe());
+            calculateNutrition(requestId, inputData.getRecipe());
         }
         catch (RuntimeException exception) {
-            presenter.prepareFailView("Nutrition information could not be retrieved.");
+            presenter.prepareFailView(requestId,
+                    "Nutrition information could not be retrieved.");
         }
     }
 
-    private void calculateNutrition(Recipe recipe) {
+    private void calculateNutrition(long requestId, Recipe recipe) {
         final double[] totals = new double[NUTRIENT_COUNT];
         final boolean[] hasValue = new boolean[NUTRIENT_COUNT];
         final List<IngredientBreakdown> breakdown = new ArrayList<>();
@@ -98,7 +101,7 @@ public class ViewNutritionInteractor implements ViewNutritionInputBoundary {
         }
 
         final ViewNutritionOutputData outputData = new ViewNutritionOutputData(
-                recipe.getId(), recipe.getName(), servings, totalNutrition,
+                requestId, recipe.getId(), recipe.getName(), servings, totalNutrition,
                 perServingNutrition, breakdown, notes, complete,
                 perServingAvailable, containsEstimates);
         presenter.prepareSuccessView(outputData);
@@ -185,7 +188,8 @@ public class ViewNutritionInteractor implements ViewNutritionInputBoundary {
                     + " uses an estimated weight and estimated nutrition data.";
         }
         else if (estimatedWeight) {
-            estimateNote = ingredientName + " uses an explicitly supplied estimated weight.";
+            estimateNote = ingredientName
+                    + " uses an ingredient-specific reference weight.";
         }
         else if (estimatedNutrition) {
             estimateNote = ingredientName + " uses estimated nutrition data.";

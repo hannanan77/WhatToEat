@@ -10,11 +10,12 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
+import entity.Ingredient;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -44,7 +45,7 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
     private final String apiKey;
     private final HttpGateway httpGateway;
     private final Map<String, Optional<IngredientNutritionData>> cache =
-            new HashMap<>();
+            new ConcurrentHashMap<>();
 
     /** Creates a USDA data access object configured by the USDA_API_KEY variable. */
     public UsdaNutritionDataAccess() {
@@ -68,15 +69,14 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
         }
 
         final String normalizedName = ingredientName.trim().toLowerCase(Locale.ROOT);
-        if (cache.containsKey(normalizedName)) {
-            return cache.get(normalizedName);
-        }
+        return cache.computeIfAbsent(normalizedName,
+                ignored -> loadNutrition(ingredientName.trim()));
+    }
 
+    private Optional<IngredientNutritionData> loadNutrition(String ingredientName) {
         try {
-            final String response = httpGateway.get(createSearchUrl(ingredientName.trim()));
-            final Optional<IngredientNutritionData> result = parseResponse(response);
-            cache.put(normalizedName, result);
-            return result;
+            final String response = httpGateway.get(createSearchUrl(ingredientName));
+            return parseResponse(response);
         }
         catch (IOException exception) {
             throw new UncheckedIOException(
@@ -86,6 +86,98 @@ public class UsdaNutritionDataAccess implements NutritionDataAccessInterface {
             throw new IllegalStateException(
                     "USDA FoodData Central returned an invalid response.", exception);
         }
+    }
+
+    @Override
+    public Optional<Double> estimateWeightInGrams(Ingredient ingredient) {
+        if (ingredient == null || !ingredient.hasKnownQuantity()) {
+            return Optional.empty();
+        }
+
+        final Double gramsPerUnit = referenceGramsPerUnit(
+                normalizeMeasure(ingredient.getName()),
+                normalizeMeasure(ingredient.getUnit()));
+        if (gramsPerUnit == null) {
+            return Optional.empty();
+        }
+
+        final double totalGrams = ingredient.getQuantity() * gramsPerUnit;
+        return Double.isFinite(totalGrams) && totalGrams > 0.0
+                ? Optional.of(totalGrams) : Optional.empty();
+    }
+
+    /**
+     * Uses food-specific USDA household portions instead of a universal volume guess.
+     * References: raw onion FDC 170000, olive oil FDC 171413, and butter NDB 01001.
+     */
+    private Double referenceGramsPerUnit(String ingredientName, String unit) {
+        if (isOnion(ingredientName) && isPiece(unit)) {
+            return 110.0;
+        }
+        if (isOliveOil(ingredientName)) {
+            if (isTablespoon(unit)) {
+                return 13.5;
+            }
+            if (isTeaspoon(unit)) {
+                return 4.5;
+            }
+            if (isCup(unit)) {
+                return 216.0;
+            }
+        }
+        if (isButter(ingredientName)) {
+            if (isTablespoon(unit)) {
+                return 14.2;
+            }
+            if (isTeaspoon(unit)) {
+                return 14.2 / 3.0;
+            }
+            if (isCup(unit)) {
+                return 227.2;
+            }
+        }
+        return null;
+    }
+
+    private boolean isOnion(String name) {
+        return "onion".equals(name) || "yellow onion".equals(name)
+                || "white onion".equals(name) || "red onion".equals(name)
+                || "sweet onion".equals(name);
+    }
+
+    private boolean isOliveOil(String name) {
+        return "olive oil".equals(name) || "virgin olive oil".equals(name)
+                || "extra virgin olive oil".equals(name);
+    }
+
+    private boolean isButter(String name) {
+        return "butter".equals(name) || "salted butter".equals(name)
+                || "unsalted butter".equals(name);
+    }
+
+    private boolean isPiece(String unit) {
+        return "piece".equals(unit) || "pieces".equals(unit)
+                || "item".equals(unit) || "items".equals(unit)
+                || "medium".equals(unit);
+    }
+
+    private boolean isTablespoon(String unit) {
+        return "tbsp".equals(unit) || "tablespoon".equals(unit)
+                || "tablespoons".equals(unit);
+    }
+
+    private boolean isTeaspoon(String unit) {
+        return "tsp".equals(unit) || "teaspoon".equals(unit)
+                || "teaspoons".equals(unit);
+    }
+
+    private boolean isCup(String unit) {
+        return "cup".equals(unit) || "cups".equals(unit);
+    }
+
+    private String normalizeMeasure(String value) {
+        return value.toLowerCase(Locale.ROOT).trim()
+                .replaceAll("[^a-z0-9]+", " ").trim();
     }
 
     private String createSearchUrl(String ingredientName) {

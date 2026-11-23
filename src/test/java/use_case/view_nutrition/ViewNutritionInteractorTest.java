@@ -113,7 +113,7 @@ class ViewNutritionInteractorTest {
         assertTrue(breakdown.isEstimatedWeight());
         assertFalse(breakdown.isEstimatedNutritionData());
         assertTrue(output.containsEstimates());
-        assertTrue(breakdown.getNote().contains("explicitly supplied estimated weight"));
+        assertTrue(breakdown.getNote().contains("ingredient-specific reference weight"));
     }
 
     @Test
@@ -223,10 +223,11 @@ class ViewNutritionInteractorTest {
         ViewNutritionInteractor interactor =
                 new ViewNutritionInteractor(dataAccess, outputBoundary);
 
-        interactor.execute(new ViewNutritionInputData(recipe));
+        interactor.execute(new ViewNutritionInputData(73L, recipe));
 
         assertNull(outputBoundary.errorMessage);
         assertNotNull(outputBoundary.outputData);
+        assertEquals(73L, outputBoundary.outputData.getRequestId());
         return outputBoundary.outputData;
     }
 
@@ -302,7 +303,7 @@ class ViewNutritionInteractorTest {
         }
 
         @Override
-        public void prepareFailView(String errorMessage) {
+        public void prepareFailView(long requestId, String errorMessage) {
             this.errorMessage = errorMessage;
         }
     }

@@ -27,28 +27,29 @@ public class ViewNutritionViewModel {
     private boolean containsEstimates;
     private boolean loading;
     private boolean error;
+    private long activeRequestId;
 
     public void addPropertyChangeListener(PropertyChangeListener listener) {
         propertyChangeSupport.addPropertyChangeListener(listener);
     }
 
-    public String getRecipeName() {
+    public synchronized String getRecipeName() {
         return recipeName;
     }
 
-    public String getServings() {
+    public synchronized String getServings() {
         return servings;
     }
 
-    public String[] getTotalValues() {
+    public synchronized String[] getTotalValues() {
         return totalValues.clone();
     }
 
-    public String[] getPerServingValues() {
+    public synchronized String[] getPerServingValues() {
         return perServingValues.clone();
     }
 
-    public List<String[]> getIngredientRows() {
+    public synchronized List<String[]> getIngredientRows() {
         final List<String[]> copy = new ArrayList<>();
         for (String[] row : ingredientRows) {
             copy.add(row.clone());
@@ -56,35 +57,38 @@ public class ViewNutritionViewModel {
         return Collections.unmodifiableList(copy);
     }
 
-    public String getStatusMessage() {
+    public synchronized String getStatusMessage() {
         return statusMessage;
     }
 
-    public boolean isTotalComplete() {
+    public synchronized boolean isTotalComplete() {
         return totalComplete;
     }
 
-    public boolean isDataAvailable() {
+    public synchronized boolean isDataAvailable() {
         return dataAvailable;
     }
 
-    public boolean containsEstimates() {
+    public synchronized boolean containsEstimates() {
         return containsEstimates;
     }
 
-    public boolean isLoading() {
+    public synchronized boolean isLoading() {
         return loading;
     }
 
-    public boolean isError() {
+    public synchronized boolean isError() {
         return error;
     }
 
-    void setNutrition(String recipeName, String servings,
-                      String[] totalValues, String[] perServingValues,
-                      List<String[]> ingredientRows, String statusMessage,
-                      boolean totalComplete, boolean dataAvailable,
-                      boolean containsEstimates) {
+    synchronized void setNutrition(long requestId, String recipeName, String servings,
+                                   String[] totalValues, String[] perServingValues,
+                                   List<String[]> ingredientRows, String statusMessage,
+                                   boolean totalComplete, boolean dataAvailable,
+                                   boolean containsEstimates) {
+        if (requestId != activeRequestId) {
+            return;
+        }
         this.recipeName = recipeName;
         this.servings = servings;
         this.totalValues = totalValues.clone();
@@ -99,7 +103,8 @@ public class ViewNutritionViewModel {
         notifyStateChanged();
     }
 
-    void setLoading(String recipeName, Integer servings) {
+    synchronized void setLoading(long requestId, String recipeName, Integer servings) {
+        activeRequestId = requestId;
         this.recipeName = recipeName;
         this.servings = servings == null
                 ? "Servings unavailable"
@@ -111,12 +116,20 @@ public class ViewNutritionViewModel {
         notifyStateChanged();
     }
 
-    void setError(String errorMessage) {
+    synchronized void setError(long requestId, String errorMessage) {
+        if (requestId != activeRequestId) {
+            return;
+        }
         clearNutritionData();
         statusMessage = errorMessage;
         loading = false;
         error = true;
         notifyStateChanged();
+    }
+
+    /** Prevents a background request from publishing after the dialog closes. */
+    synchronized void invalidateRequest(long requestId) {
+        activeRequestId = requestId;
     }
 
     private void clearNutritionData() {

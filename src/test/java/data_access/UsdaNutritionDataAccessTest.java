@@ -3,9 +3,15 @@ package data_access;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import entity.Ingredient;
 import org.junit.jupiter.api.Test;
 import use_case.view_nutrition.IngredientNutritionData;
 
@@ -143,6 +149,81 @@ class UsdaNutritionDataAccessTest {
         dataAccess.findNutrition(" rice ");
 
         assertEquals(1, requestCount.get());
+    }
+
+    @Test
+    void testConcurrentIngredientRequestsShareOneCachedLookup() throws Exception {
+        AtomicInteger requestCount = new AtomicInteger();
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseRequest = new CountDownLatch(1);
+        UsdaNutritionDataAccess dataAccess =
+                new UsdaNutritionDataAccess("key", url -> {
+                    requestCount.incrementAndGet();
+                    requestStarted.countDown();
+                    try {
+                        releaseRequest.await(2, TimeUnit.SECONDS);
+                    }
+                    catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                        throw new IOException("interrupted", exception);
+                    }
+                    return "{\"foods\":[]}";
+                });
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<Optional<IngredientNutritionData>> first =
+                    executor.submit(() -> dataAccess.findNutrition("Rice"));
+            assertTrue(requestStarted.await(2, TimeUnit.SECONDS));
+            Future<Optional<IngredientNutritionData>> second =
+                    executor.submit(() -> dataAccess.findNutrition(" rice "));
+            releaseRequest.countDown();
+
+            assertTrue(first.get(2, TimeUnit.SECONDS).isEmpty());
+            assertTrue(second.get(2, TimeUnit.SECONDS).isEmpty());
+            assertEquals(1, requestCount.get());
+        }
+        finally {
+            releaseRequest.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void testIngredientSpecificReferenceWeights() {
+        UsdaNutritionDataAccess dataAccess =
+                new UsdaNutritionDataAccess("key", url -> "{\"foods\":[]}");
+
+        assertEstimatedWeight(dataAccess,
+                new Ingredient("Yellow Onion", 1.0, "piece"), 110.0);
+        assertEstimatedWeight(dataAccess,
+                new Ingredient("Extra-Virgin Olive Oil", 2.0, "tbsp"), 27.0);
+        assertEstimatedWeight(dataAccess,
+                new Ingredient("Olive Oil", 2.0, "teaspoons"), 9.0);
+        assertEstimatedWeight(dataAccess,
+                new Ingredient("Unsalted Butter", 0.5, "cup"), 113.6);
+    }
+
+    @Test
+    void testUnsupportedReferenceWeightsRemainUnavailable() {
+        UsdaNutritionDataAccess dataAccess =
+                new UsdaNutritionDataAccess("key", url -> "{\"foods\":[]}");
+
+        assertTrue(dataAccess.estimateWeightInGrams(
+                new Ingredient("Flour", 1.0, "cup")).isEmpty());
+        assertTrue(dataAccess.estimateWeightInGrams(
+                new Ingredient("Garlic", 1.0, "piece")).isEmpty());
+        assertTrue(dataAccess.estimateWeightInGrams(
+                new Ingredient("Vegetable Oil", 1.0, "tbsp")).isEmpty());
+        assertTrue(dataAccess.estimateWeightInGrams(
+                new Ingredient("Olive Oil", 1.0, "piece")).isEmpty());
+    }
+
+    private static void assertEstimatedWeight(UsdaNutritionDataAccess dataAccess,
+                                              Ingredient ingredient,
+                                              double expectedGrams) {
+        assertEquals(expectedGrams,
+                dataAccess.estimateWeightInGrams(ingredient).orElseThrow(), TOLERANCE);
     }
 
     private static String nutrient(int nutrientId, String unit, double value) {

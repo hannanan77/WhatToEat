@@ -185,6 +185,13 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         controller.execute(selectedRecipe);
     }
 
+    /** Invalidates a nutrition request that may still be running. */
+    void cancelNutritionRequest() {
+        if (controller != null) {
+            controller.cancelCurrentRequest();
+        }
+    }
+
     public void requestInitialFocus() {
         footerCloseButton.requestFocusInWindow();
     }

@@ -1,5 +1,8 @@
 package interface_adapter.view_nutrition;
 
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
+
 import javax.swing.SwingWorker;
 
 import entity.Recipe;
@@ -13,23 +16,23 @@ public class ViewNutritionController {
 
     private final ViewNutritionInputBoundary viewNutritionInteractor;
     private final ViewNutritionViewModel viewModel;
-
-    public ViewNutritionController(ViewNutritionInputBoundary viewNutritionInteractor) {
-        this(viewNutritionInteractor, null);
-    }
+    private final AtomicLong requestSequence = new AtomicLong();
 
     public ViewNutritionController(ViewNutritionInputBoundary viewNutritionInteractor,
                                    ViewNutritionViewModel viewModel) {
-        this.viewNutritionInteractor = viewNutritionInteractor;
-        this.viewModel = viewModel;
+        this.viewNutritionInteractor = Objects.requireNonNull(viewNutritionInteractor);
+        this.viewModel = Objects.requireNonNull(viewModel);
     }
 
     public void execute(Recipe selectedRecipe) {
+        final long requestId = requestSequence.incrementAndGet();
         final ViewNutritionInputData inputData =
-                new ViewNutritionInputData(selectedRecipe);
-        if (viewModel != null && selectedRecipe != null) {
-            viewModel.setLoading(selectedRecipe.getName(), selectedRecipe.getServings());
-        }
+                new ViewNutritionInputData(requestId, selectedRecipe);
+        final String recipeName = selectedRecipe == null
+                ? "No recipe selected" : selectedRecipe.getName();
+        final Integer servings = selectedRecipe == null
+                ? null : selectedRecipe.getServings();
+        viewModel.setLoading(requestId, recipeName, servings);
 
         // USDA requests run away from the Swing event thread.
         new SwingWorker<Void, Void>() {
@@ -39,5 +42,11 @@ public class ViewNutritionController {
                 return null;
             }
         }.execute();
+    }
+
+    /** Invalidates a request that may still be finishing in the background. */
+    public void cancelCurrentRequest() {
+        final long requestId = requestSequence.incrementAndGet();
+        viewModel.invalidateRequest(requestId);
     }
 }

@@ -73,6 +73,7 @@ public class ViewNutritionDialog extends JDialog {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent event) {
+                nutritionView.cancelNutritionRequest();
                 restoreFocus();
             }
         });
@@ -95,6 +96,7 @@ public class ViewNutritionDialog extends JDialog {
     }
 
     public void closeDialog() {
+        nutritionView.cancelNutritionRequest();
         setVisible(false);
         restoreFocus();
     }
