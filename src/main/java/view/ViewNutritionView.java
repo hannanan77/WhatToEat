@@ -10,10 +10,12 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
+import java.awt.Shape;
+import java.awt.geom.Path2D;
+import java.awt.geom.RoundRectangle2D;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.MouseEvent;
@@ -25,6 +27,7 @@ import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
+import javax.swing.Icon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -34,7 +37,7 @@ import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
+import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
@@ -49,29 +52,21 @@ import interface_adapter.view_nutrition.ViewNutritionViewModel;
  */
 public class ViewNutritionView extends JPanel implements PropertyChangeListener {
 
-    private static final Color SAGE_GREEN = new Color(110, 155, 118);
-    private static final Color FOREST_GREEN = new Color(53, 94, 67);
-    private static final Color DEEP_FOREST = new Color(43, 76, 54);
-    private static final Color WARM_WHITE = new Color(248, 250, 246);
-    private static final Color SOFT_MINT = new Color(230, 241, 232);
-    private static final Color PALE_MINT = new Color(242, 249, 243);
-    private static final Color SOFT_BEIGE = new Color(243, 235, 221);
-    private static final Color WHITE = Color.WHITE;
-    private static final Color TEXT = new Color(38, 51, 43);
-    private static final Color SECONDARY_TEXT = new Color(91, 105, 96);
-    private static final Color OUTLINE = new Color(225, 233, 226);
-    private static final Color WARNING_TEXT = new Color(138, 75, 20);
-    private static final Color WARNING_BACKGROUND = new Color(253, 243, 231);
-    private static final Color ERROR_TEXT = new Color(139, 43, 43);
-    private static final Color ERROR_BACKGROUND = new Color(253, 236, 236);
-    private static final Color ROW_ALTERNATE = new Color(248, 252, 248);
+    private static final String PARTIAL_ESTIMATE_MESSAGE =
+            "Totals include available data and reasonable estimates based on typical "
+                    + "weights and reference nutrition. Values that cannot be estimated "
+                    + "remain N/A and are excluded.";
+    private static final String ESTIMATE_MESSAGE =
+            "Some values use reasonable estimates based on typical ingredient weights "
+                    + "and reference nutrition.";
+    private static final String UNAVAILABLE_MESSAGE =
+            "Nutrition could not be estimated reliably. Missing values remain N/A and "
+                    + "are excluded from totals.";
 
     private static final String[] TABLE_COLUMNS = {
-        "INGREDIENT", "QUANTITY", "UNIT", "CALORIES", "PROTEIN",
-        "CARBS", "FAT", "DATA STATUS"
+        "Ingredient", "Quantity", "Unit", "Calories", "Protein",
+        "Carbs", "Fat", "Status"
     };
-
-    private static final String FONT_FAMILY = findFontFamily();
 
     private final ViewNutritionViewModel viewModel;
     private final JLabel recipeNameLabel = new JLabel("No recipe selected");
@@ -80,15 +75,15 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             "Nutrition values are estimates based on ingredient quantities.");
     private final JLabel[] totalValueLabels = createValueLabels();
     private final JLabel[] perServingValueLabels = createValueLabels();
-    private final RoundedPanel statusPanel = new RoundedPanel(SOFT_MINT, OUTLINE, 14);
+    private final RoundedPanel statusPanel = new RoundedPanel(
+            UiTheme.MINT, UiTheme.BORDER, 14);
     private final JLabel statusTitleLabel = new JLabel("Nutrition details");
     private final JTextArea statusArea = new JTextArea();
     private final JProgressBar loadingIndicator = new JProgressBar();
     private final RoundedButton retryButton = new RoundedButton("Retry", ButtonStyle.SECONDARY);
-    private final RoundedButton headerCloseButton = new RoundedButton("X", ButtonStyle.GHOST);
     private final RoundedButton footerCloseButton = new RoundedButton("Close", ButtonStyle.PRIMARY);
     private final JLabel ingredientCountLabel = new JLabel("0 ingredients");
-    private final Component statusGap = Box.createVerticalStrut(8);
+    private final Component statusGap = Box.createVerticalStrut(UiTheme.SPACE_SM);
     private final DefaultTableModel tableModel = new DefaultTableModel(TABLE_COLUMNS, 0) {
         @Override
         public boolean isCellEditable(int row, int column) {
@@ -107,7 +102,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             return super.getToolTipText(event);
         }
     };
-    private final JScrollPane tableScrollPane = new JScrollPane(ingredientTable);
+    private final JScrollPane tableScrollPane = new RoundedTableScrollPane(ingredientTable);
 
     private ViewNutritionController controller;
     private Recipe selectedRecipe;
@@ -118,13 +113,15 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         viewModel.addPropertyChangeListener(this);
 
         setLayout(new BorderLayout(0, 10));
-        setBackground(WARM_WHITE);
-        setBorder(BorderFactory.createEmptyBorder(12, 16, 12, 16));
+        setBackground(UiTheme.BACKGROUND);
+        setBorder(BorderFactory.createEmptyBorder(
+                UiTheme.SPACE_LG, UiTheme.SPACE_LG,
+                UiTheme.SPACE_LG, UiTheme.SPACE_LG));
         setPreferredSize(new Dimension(1040, 740));
 
         final JPanel upperContent = verticalPanel();
         upperContent.add(createHeader());
-        upperContent.add(Box.createVerticalStrut(8));
+        upperContent.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
         upperContent.add(createStatusBanner());
         upperContent.add(statusGap);
         upperContent.add(createNutritionSummary());
@@ -134,9 +131,9 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         add(createFooter(), BorderLayout.SOUTH);
 
         retryButton.addActionListener(event -> requestNutrition());
-        headerCloseButton.addActionListener(event -> closeAction.run());
         footerCloseButton.addActionListener(event -> closeAction.run());
-        headerCloseButton.getAccessibleContext().setAccessibleName("Close nutrition dialog");
+        footerCloseButton.getAccessibleContext().setAccessibleName("Close nutrition dialog");
+        footerCloseButton.setToolTipText("Close dialog (Esc)");
         statusArea.getAccessibleContext().setAccessibleName("Nutrition status");
         ingredientTable.getAccessibleContext().setAccessibleName("Ingredient nutrition breakdown");
         addComponentListener(new ComponentAdapter() {
@@ -189,7 +186,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     public void requestInitialFocus() {
-        headerCloseButton.requestFocusInWindow();
+        footerCloseButton.requestFocusInWindow();
     }
 
     @Override
@@ -203,9 +200,11 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private JPanel createHeader() {
-        final RoundedPanel header = new RoundedPanel(SOFT_MINT, OUTLINE, 18);
-        header.setLayout(new BorderLayout(12, 0));
-        header.setBorder(BorderFactory.createEmptyBorder(9, 16, 9, 10));
+        final RoundedPanel header = new RoundedPanel(
+                UiTheme.MINT, UiTheme.BORDER, UiTheme.CARD_RADIUS);
+        header.setLayout(new BorderLayout(UiTheme.SPACE_MD, 0));
+        header.setBorder(BorderFactory.createEmptyBorder(
+                9, UiTheme.SPACE_LG, 9, 10));
         header.setPreferredSize(new Dimension(1000, 68));
         header.setMaximumSize(new Dimension(Integer.MAX_VALUE, 68));
         header.setAlignmentX(LEFT_ALIGNMENT);
@@ -214,18 +213,19 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         textPanel.setOpaque(false);
 
         final JLabel title = new JLabel("Recipe Nutrition");
-        title.setFont(appFont(Font.BOLD, 20f));
-        title.setForeground(FOREST_GREEN);
+        title.setFont(UiTheme.HEADING_FONT.deriveFont(20f));
+        title.setForeground(UiTheme.SECONDARY);
         title.setAlignmentX(LEFT_ALIGNMENT);
 
         final JPanel details = new JPanel(new FlowLayout(FlowLayout.LEFT, 7, 0));
         details.setOpaque(false);
-        recipeNameLabel.setFont(appFont(Font.BOLD, 13f));
-        recipeNameLabel.setForeground(TEXT);
-        servingsLabel.setFont(appFont(Font.PLAIN, 12f));
-        servingsLabel.setForeground(SECONDARY_TEXT);
-        calculationNoteLabel.setFont(appFont(Font.PLAIN, 12f));
-        calculationNoteLabel.setForeground(SECONDARY_TEXT);
+        recipeNameLabel.setFont(UiTheme.LABEL_FONT);
+        recipeNameLabel.setForeground(UiTheme.TEXT_PRIMARY);
+        servingsLabel.setFont(UiTheme.LABEL_FONT.deriveFont(Font.PLAIN, 12f));
+        servingsLabel.setForeground(UiTheme.TEXT_SECONDARY);
+        calculationNoteLabel.setFont(
+                UiTheme.LABEL_FONT.deriveFont(Font.PLAIN, 12f));
+        calculationNoteLabel.setForeground(UiTheme.TEXT_SECONDARY);
         details.add(recipeNameLabel);
         details.add(separatorLabel());
         details.add(servingsLabel);
@@ -237,39 +237,35 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         textPanel.add(Box.createVerticalStrut(3));
         textPanel.add(details);
 
-        headerCloseButton.setPreferredSize(new Dimension(36, 36));
-        headerCloseButton.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
-        headerCloseButton.setFont(appFont(Font.BOLD, 16f));
-        headerCloseButton.setToolTipText("Close (Esc)");
         header.add(textPanel, BorderLayout.CENTER);
-        header.add(headerCloseButton, BorderLayout.EAST);
         return header;
     }
 
     private JPanel createStatusBanner() {
         statusPanel.setLayout(new BorderLayout(10, 3));
-        statusPanel.setBorder(BorderFactory.createEmptyBorder(8, 14, 8, 12));
+        statusPanel.setBorder(BorderFactory.createEmptyBorder(
+                UiTheme.SPACE_SM, 14, UiTheme.SPACE_SM, UiTheme.SPACE_MD));
         statusPanel.setAlignmentX(LEFT_ALIGNMENT);
 
         final JPanel textPanel = new JPanel(new BorderLayout(0, 2));
         textPanel.setOpaque(false);
-        statusTitleLabel.setFont(appFont(Font.BOLD, 13f));
-        statusTitleLabel.setForeground(FOREST_GREEN);
+        statusTitleLabel.setFont(UiTheme.LABEL_FONT);
+        statusTitleLabel.setForeground(UiTheme.SECONDARY);
         statusArea.setEditable(false);
         statusArea.setFocusable(false);
         statusArea.setLineWrap(true);
         statusArea.setWrapStyleWord(true);
         statusArea.setOpaque(false);
-        statusArea.setFont(appFont(Font.PLAIN, 12f));
-        statusArea.setForeground(TEXT);
+        statusArea.setFont(UiTheme.LABEL_FONT.deriveFont(Font.PLAIN, 12f));
+        statusArea.setForeground(UiTheme.TEXT_PRIMARY);
         statusArea.setRows(1);
         textPanel.add(statusTitleLabel, BorderLayout.NORTH);
         textPanel.add(statusArea, BorderLayout.CENTER);
 
         loadingIndicator.setIndeterminate(true);
         loadingIndicator.setBorderPainted(false);
-        loadingIndicator.setBackground(PALE_MINT);
-        loadingIndicator.setForeground(SAGE_GREEN);
+        loadingIndicator.setBackground(UiTheme.BACKGROUND);
+        loadingIndicator.setForeground(UiTheme.PRIMARY);
         loadingIndicator.setPreferredSize(new Dimension(120, 4));
         loadingIndicator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 4));
 
@@ -294,44 +290,59 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private JPanel createNutritionCard(String title, String subtitle, JLabel[] valueLabels) {
-        final RoundedPanel card = new RoundedPanel(SOFT_MINT, OUTLINE, 18);
-        card.setLayout(new BorderLayout(0, 8));
+        final RoundedPanel card = new RoundedPanel(
+                UiTheme.MINT, UiTheme.BORDER, UiTheme.CARD_RADIUS);
+        card.setLayout(new BorderLayout(0, UiTheme.SPACE_SM));
         card.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
 
         final JPanel heading = new JPanel(new BorderLayout());
         heading.setOpaque(false);
         final JLabel titleLabel = new JLabel(title);
-        titleLabel.setFont(appFont(Font.BOLD, 15f));
-        titleLabel.setForeground(FOREST_GREEN);
+        titleLabel.setFont(UiTheme.BODY_LARGE_FONT.deriveFont(Font.BOLD));
+        titleLabel.setForeground(UiTheme.SECONDARY);
         final JLabel subtitleLabel = new JLabel(subtitle);
-        subtitleLabel.setFont(appFont(Font.PLAIN, 11f));
-        subtitleLabel.setForeground(SECONDARY_TEXT);
+        subtitleLabel.setFont(UiTheme.SMALL_LABEL_FONT.deriveFont(Font.PLAIN));
+        subtitleLabel.setForeground(UiTheme.TEXT_SECONDARY);
         heading.add(titleLabel, BorderLayout.WEST);
         heading.add(subtitleLabel, BorderLayout.EAST);
 
-        final JPanel metrics = new JPanel(new GridLayout(2, 2, 8, 8));
+        final JPanel metrics = new JPanel(new GridLayout(
+                2, 2, UiTheme.SPACE_SM, UiTheme.SPACE_SM));
         metrics.setOpaque(false);
-        metrics.add(createMetricPanel("Calories", valueLabels[0]));
-        metrics.add(createMetricPanel("Protein", valueLabels[1]));
-        metrics.add(createMetricPanel("Carbohydrates", valueLabels[2]));
-        metrics.add(createMetricPanel("Fat", valueLabels[3]));
+        metrics.add(createMetricPanel("Calories", valueLabels[0],
+                NutrientIconType.CALORIES));
+        metrics.add(createMetricPanel("Protein", valueLabels[1],
+                NutrientIconType.PROTEIN));
+        metrics.add(createMetricPanel("Carbohydrates", valueLabels[2],
+                NutrientIconType.CARBOHYDRATES));
+        metrics.add(createMetricPanel("Fat", valueLabels[3],
+                NutrientIconType.FAT));
 
         card.add(heading, BorderLayout.NORTH);
         card.add(metrics, BorderLayout.CENTER);
         return card;
     }
 
-    private JPanel createMetricPanel(String name, JLabel valueLabel) {
-        final RoundedPanel panel = new RoundedPanel(WHITE, OUTLINE, 14);
+    private JPanel createMetricPanel(String name, JLabel valueLabel,
+                                     NutrientIconType iconType) {
+        final RoundedPanel panel = new RoundedPanel(
+                UiTheme.SURFACE, UiTheme.BORDER, 14);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createEmptyBorder(6, 10, 5, 10));
 
         final JLabel nameLabel = new JLabel(name);
-        nameLabel.setFont(appFont(Font.PLAIN, 11f));
-        nameLabel.setForeground(SECONDARY_TEXT);
+        nameLabel.setFont(UiTheme.SMALL_LABEL_FONT.deriveFont(Font.PLAIN));
+        nameLabel.setForeground(UiTheme.TEXT_SECONDARY);
         nameLabel.setAlignmentX(LEFT_ALIGNMENT);
-        valueLabel.setFont(appFont(Font.BOLD, 17f));
-        valueLabel.setForeground(FOREST_GREEN);
+        nameLabel.setIcon(new NutrientIcon(iconType));
+        nameLabel.setIconTextGap(UiTheme.SPACE_XS);
+        if (iconType == NutrientIconType.CALORIES) {
+            valueLabel.setFont(UiTheme.HEADING_FONT.deriveFont(20f));
+        }
+        else {
+            valueLabel.setFont(UiTheme.SECTION_HEADING_FONT.deriveFont(17f));
+        }
+        valueLabel.setForeground(UiTheme.SECONDARY);
         valueLabel.setAlignmentX(LEFT_ALIGNMENT);
         panel.add(nameLabel);
         panel.add(Box.createVerticalStrut(2));
@@ -340,24 +351,29 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private JPanel createIngredientBreakdown() {
-        final RoundedPanel panel = new RoundedPanel(WHITE, OUTLINE, 18);
-        panel.setLayout(new BorderLayout(0, 8));
-        panel.setBorder(BorderFactory.createEmptyBorder(10, 12, 10, 12));
+        final RoundedPanel panel = new RoundedPanel(
+                UiTheme.SURFACE, UiTheme.BORDER, UiTheme.CARD_RADIUS);
+        panel.setLayout(new BorderLayout(0, UiTheme.SPACE_SM));
+        panel.setBorder(BorderFactory.createEmptyBorder(
+                10, 0, 0, 0));
 
         final JPanel heading = new JPanel(new BorderLayout());
         heading.setOpaque(false);
+        heading.setBorder(BorderFactory.createEmptyBorder(
+                0, UiTheme.SPACE_MD, 0, UiTheme.SPACE_MD));
         final JLabel title = new JLabel("Ingredient Breakdown");
-        title.setFont(appFont(Font.BOLD, 16f));
-        title.setForeground(TEXT);
-        ingredientCountLabel.setFont(appFont(Font.PLAIN, 12f));
-        ingredientCountLabel.setForeground(SECONDARY_TEXT);
+        title.setFont(UiTheme.SECTION_HEADING_FONT.deriveFont(17f));
+        title.setForeground(UiTheme.TEXT_PRIMARY);
+        ingredientCountLabel.setFont(
+                UiTheme.LABEL_FONT.deriveFont(Font.PLAIN, 12f));
+        ingredientCountLabel.setForeground(UiTheme.TEXT_SECONDARY);
         heading.add(title, BorderLayout.WEST);
         heading.add(ingredientCountLabel, BorderLayout.EAST);
 
         configureTable();
         tableScrollPane.setColumnHeaderView(ingredientTable.getTableHeader());
         tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
-        tableScrollPane.getViewport().setBackground(WHITE);
+        tableScrollPane.getViewport().setBackground(UiTheme.SURFACE);
         tableScrollPane.setHorizontalScrollBarPolicy(
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         tableScrollPane.setVerticalScrollBarPolicy(
@@ -372,11 +388,11 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private JPanel createFooter() {
-        final JPanel footer = new JPanel(new BorderLayout(16, 0));
+        final JPanel footer = new JPanel(new BorderLayout(UiTheme.SPACE_LG, 0));
         footer.setOpaque(false);
         final JLabel note = new JLabel("~ marks estimates; * marks incomplete totals.");
-        note.setFont(appFont(Font.PLAIN, 11f));
-        note.setForeground(SECONDARY_TEXT);
+        note.setFont(UiTheme.SMALL_LABEL_FONT.deriveFont(Font.PLAIN));
+        note.setForeground(UiTheme.TEXT_SECONDARY);
         footerCloseButton.setPreferredSize(new Dimension(100, 36));
         footer.add(note, BorderLayout.WEST);
         footer.add(footerCloseButton, BorderLayout.EAST);
@@ -384,15 +400,20 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private void configureTable() {
-        ingredientTable.setFont(appFont(Font.PLAIN, 13f));
-        ingredientTable.setForeground(TEXT);
-        ingredientTable.setBackground(WHITE);
-        ingredientTable.setRowHeight(34);
+        ingredientTable.setFont(UiTheme.BODY_FONT);
+        ingredientTable.setForeground(UiTheme.TEXT_PRIMARY);
+        ingredientTable.setBackground(UiTheme.SURFACE);
+        ingredientTable.setRowHeight(36);
         ingredientTable.setShowHorizontalLines(false);
         ingredientTable.setShowVerticalLines(false);
         ingredientTable.setIntercellSpacing(new Dimension(0, 0));
-        ingredientTable.setSelectionBackground(SOFT_MINT);
-        ingredientTable.setSelectionForeground(TEXT);
+        ingredientTable.setRowSelectionAllowed(false);
+        ingredientTable.setColumnSelectionAllowed(false);
+        ingredientTable.setCellSelectionEnabled(false);
+        ingredientTable.setRequestFocusEnabled(false);
+        ingredientTable.clearSelection();
+        ingredientTable.setSelectionBackground(UiTheme.MINT);
+        ingredientTable.setSelectionForeground(UiTheme.TEXT_PRIMARY);
         ingredientTable.setFillsViewportHeight(true);
         ingredientTable.setAutoCreateRowSorter(false);
 
@@ -404,15 +425,19 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         ingredientTable.setDefaultRenderer(Object.class,
                 new NutritionTableRenderer(SwingConstants.LEFT, false));
         ingredientTable.getColumnModel().getColumn(0).setCellRenderer(
-                new NutritionTableRenderer(SwingConstants.LEFT, true));
+                new NutritionTableRenderer(SwingConstants.LEFT, true,
+                        UiTheme.SPACE_MD, UiTheme.SPACE_SM));
         for (int column : new int[] {1, 3, 4, 5, 6}) {
             ingredientTable.getColumnModel().getColumn(column).setCellRenderer(
                     new NutritionTableRenderer(SwingConstants.RIGHT, false));
         }
+        ingredientTable.getColumnModel().getColumn(2).setCellRenderer(
+                new NutritionTableRenderer(SwingConstants.LEFT, false,
+                        UiTheme.SPACE_LG, UiTheme.SPACE_SM));
         ingredientTable.getColumnModel().getColumn(7).setCellRenderer(
                 new StatusRenderer());
 
-        final int[] columnWidths = {230, 78, 68, 104, 92, 88, 70, 146};
+        final int[] columnWidths = {224, 88, 76, 104, 92, 88, 70, 146};
         for (int index = 0; index < columnWidths.length; index++) {
             ingredientTable.getColumnModel().getColumn(index)
                     .setPreferredWidth(columnWidths[index]);
@@ -443,15 +468,15 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
         if (!viewModel.isDataAvailable()) {
             showBanner(BannerType.WARNING, "Nutrition unavailable",
-                    viewModel.getStatusMessage());
+                    UNAVAILABLE_MESSAGE);
         }
         else if (!viewModel.isTotalComplete()) {
-            showBanner(BannerType.WARNING, "Partial nutritional estimate",
-                    viewModel.getStatusMessage());
+            showBanner(BannerType.WARNING, "Partial Nutritional Estimate",
+                    PARTIAL_ESTIMATE_MESSAGE);
         }
         else if (viewModel.containsEstimates()) {
-            showBanner(BannerType.WARNING, "Estimated nutrition",
-                    viewModel.getStatusMessage());
+            showBanner(BannerType.WARNING, "Estimated Nutrition",
+                    ESTIMATE_MESSAGE);
         }
         else {
             hideStatusBanner();
@@ -473,20 +498,20 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         loadingIndicator.setVisible(type == BannerType.LOADING);
         retryButton.setVisible(type == BannerType.ERROR);
 
-        Color background = SOFT_MINT;
-        Color foreground = FOREST_GREEN;
+        Color background = UiTheme.MINT;
+        Color foreground = UiTheme.SECONDARY;
         if (type == BannerType.WARNING) {
-            background = WARNING_BACKGROUND;
-            foreground = WARNING_TEXT;
+            background = UiTheme.WARNING_BACKGROUND;
+            foreground = UiTheme.WARNING_TEXT;
         }
         else if (type == BannerType.ERROR) {
-            background = ERROR_BACKGROUND;
-            foreground = ERROR_TEXT;
+            background = UiTheme.ERROR_BACKGROUND;
+            foreground = UiTheme.ERROR;
         }
         statusPanel.setPanelColor(background);
         statusTitleLabel.setForeground(foreground);
         statusArea.setForeground(type == BannerType.INFO || type == BannerType.LOADING
-                ? TEXT : foreground);
+                ? UiTheme.TEXT_PRIMARY : foreground);
         statusArea.getAccessibleContext().setAccessibleDescription(title + ". " + message);
         statusPanel.revalidate();
         statusPanel.repaint();
@@ -620,28 +645,13 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     private static JLabel separatorLabel() {
         final JLabel separator = new JLabel("|");
-        separator.setFont(appFont(Font.PLAIN, 13f));
-        separator.setForeground(SECONDARY_TEXT);
+        separator.setFont(UiTheme.LABEL_FONT.deriveFont(Font.PLAIN));
+        separator.setForeground(UiTheme.TEXT_SECONDARY);
         return separator;
     }
 
     private static String servingText(int servings) {
         return servings + (servings == 1 ? " serving" : " servings");
-    }
-
-    private static Font appFont(int style, float size) {
-        return new Font(FONT_FAMILY, style, Math.round(size)).deriveFont(size);
-    }
-
-    private static String findFontFamily() {
-        for (String family : GraphicsEnvironment.getLocalGraphicsEnvironment()
-                .getAvailableFontFamilyNames()) {
-            if ("Plus Jakarta Sans".equalsIgnoreCase(family)) {
-                return family;
-            }
-        }
-        final Font fallback = UIManager.getFont("Label.font");
-        return fallback == null ? Font.SANS_SERIF : fallback.getFamily();
     }
 
     private enum BannerType {
@@ -653,8 +663,119 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     private enum ButtonStyle {
         PRIMARY,
-        SECONDARY,
-        GHOST
+        SECONDARY
+    }
+
+    private enum NutrientIconType {
+        CALORIES,
+        PROTEIN,
+        CARBOHYDRATES,
+        FAT
+    }
+
+    /** Small outline icons that support the visible nutrient labels. */
+    private static class NutrientIcon implements Icon {
+        private static final int SIZE = 14;
+        private static final float STROKE_WIDTH = 1.4f;
+
+        private final NutrientIconType type;
+
+        NutrientIcon(NutrientIconType type) {
+            this.type = type;
+        }
+
+        @Override
+        public void paintIcon(Component component, Graphics graphics, int x, int y) {
+            final Graphics2D graphics2D = (Graphics2D) graphics.create();
+            graphics2D.translate(x, y);
+            graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            graphics2D.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL,
+                    RenderingHints.VALUE_STROKE_PURE);
+            graphics2D.setColor(UiTheme.SECONDARY);
+            graphics2D.setStroke(new BasicStroke(STROKE_WIDTH,
+                    BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+
+            switch (type) {
+                case CALORIES:
+                    drawFlame(graphics2D);
+                    break;
+                case PROTEIN:
+                    drawBean(graphics2D);
+                    break;
+                case CARBOHYDRATES:
+                    drawWheat(graphics2D);
+                    break;
+                case FAT:
+                    drawDroplet(graphics2D);
+                    break;
+                default:
+                    break;
+            }
+            graphics2D.dispose();
+        }
+
+        @Override
+        public int getIconWidth() {
+            return SIZE;
+        }
+
+        @Override
+        public int getIconHeight() {
+            return SIZE;
+        }
+
+        private void drawFlame(Graphics2D graphics) {
+            final Path2D flame = new Path2D.Double();
+            flame.moveTo(7, 1);
+            flame.curveTo(8, 4, 12, 6, 12, 9);
+            flame.curveTo(12, 12, 10, 13, 7, 13);
+            flame.curveTo(4, 13, 2, 12, 2, 9);
+            flame.curveTo(2, 6, 4, 4, 6, 2);
+            flame.curveTo(6, 5, 8, 6, 8, 8);
+            flame.curveTo(10, 5, 8, 3, 7, 1);
+            flame.closePath();
+            graphics.draw(flame);
+        }
+
+        private void drawBean(Graphics2D graphics) {
+            final Path2D bean = new Path2D.Double();
+            bean.moveTo(2, 8);
+            bean.curveTo(2, 4, 5, 2, 9, 2);
+            bean.curveTo(12, 2, 13, 4, 12, 7);
+            bean.curveTo(11, 11, 8, 13, 5, 12);
+            bean.curveTo(2, 12, 1, 10, 2, 8);
+            bean.closePath();
+            graphics.draw(bean);
+
+            final Path2D detail = new Path2D.Double();
+            detail.moveTo(4, 8);
+            detail.curveTo(6, 10, 9, 8, 10, 5);
+            graphics.draw(detail);
+        }
+
+        private void drawWheat(Graphics2D graphics) {
+            final Path2D grain = new Path2D.Double();
+            grain.moveTo(7, 1);
+            grain.curveTo(4, 3, 5, 5, 7, 6);
+            grain.curveTo(9, 5, 10, 3, 7, 1);
+            grain.closePath();
+            graphics.draw(grain);
+            graphics.drawLine(7, 5, 7, 13);
+            graphics.drawLine(7, 8, 4, 6);
+            graphics.drawLine(7, 10, 10, 8);
+        }
+
+        private void drawDroplet(Graphics2D graphics) {
+            final Path2D droplet = new Path2D.Double();
+            droplet.moveTo(7, 1);
+            droplet.curveTo(6, 3, 3, 6, 3, 9);
+            droplet.curveTo(3, 12, 5, 13, 7, 13);
+            droplet.curveTo(9, 13, 11, 12, 11, 9);
+            droplet.curveTo(11, 6, 8, 3, 7, 1);
+            droplet.closePath();
+            graphics.draw(droplet);
+        }
     }
 
     /** Paints the soft rounded surfaces used by the approved design. */
@@ -693,16 +814,21 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     /** Paints stable hover, pressed, and keyboard-focus states. */
     private static class RoundedButton extends JButton {
-        private static final int RADIUS = 12;
+        private static final int RADIUS = UiTheme.CONTROL_RADIUS;
         private final ButtonStyle style;
 
         RoundedButton(String text, ButtonStyle style) {
             super(text);
             this.style = style;
-            setFont(appFont(Font.BOLD, 13f));
-            setForeground(style == ButtonStyle.PRIMARY ? WHITE : TEXT);
-            setBorder(BorderFactory.createEmptyBorder(8, 16, 8, 16));
+            setUI(new BasicButtonUI());
+            setFont(UiTheme.LABEL_FONT);
+            setForeground(style == ButtonStyle.PRIMARY
+                    ? UiTheme.SURFACE : UiTheme.TEXT_PRIMARY);
+            setBorder(BorderFactory.createEmptyBorder(
+                    UiTheme.SPACE_SM, UiTheme.SPACE_LG,
+                    UiTheme.SPACE_SM, UiTheme.SPACE_LG));
             setContentAreaFilled(false);
+            setBorderPainted(false);
             setFocusPainted(false);
             setOpaque(false);
             setRolloverEnabled(true);
@@ -718,15 +844,10 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                     RADIUS, RADIUS);
 
             if (style != ButtonStyle.PRIMARY) {
-                graphics2D.setColor(getModel().isRollover() ? SAGE_GREEN : OUTLINE);
+                graphics2D.setColor(getModel().isRollover() || hasFocus()
+                        ? UiTheme.PRIMARY : UiTheme.BORDER);
                 graphics2D.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3,
                         RADIUS, RADIUS);
-            }
-            if (hasFocus()) {
-                graphics2D.setStroke(new BasicStroke(2f));
-                graphics2D.setColor(SAGE_GREEN);
-                graphics2D.drawRoundRect(3, 3, getWidth() - 7, getHeight() - 7,
-                        RADIUS - 2, RADIUS - 2);
             }
             graphics2D.dispose();
             super.paintComponent(graphics);
@@ -734,25 +855,23 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
         private Color buttonColor() {
             if (style == ButtonStyle.PRIMARY) {
-                return getModel().isPressed() ? DEEP_FOREST
-                        : getModel().isRollover() ? SAGE_GREEN : FOREST_GREEN;
+                return getModel().isPressed() ? UiTheme.TEXT_PRIMARY
+                        : getModel().isRollover() || hasFocus()
+                                ? UiTheme.PRIMARY : UiTheme.SECONDARY;
             }
-            if (style == ButtonStyle.SECONDARY) {
-                return getModel().isPressed() ? new Color(217, 235, 220)
-                        : getModel().isRollover() ? WHITE : SOFT_MINT;
-            }
-            return getModel().isRollover() || getModel().isPressed()
-                    ? WHITE : new Color(238, 245, 239);
+            return getModel().isPressed() ? UiTheme.BORDER
+                    : getModel().isRollover() ? UiTheme.SURFACE : UiTheme.MINT;
         }
     }
 
     private static class TableHeaderRenderer extends DefaultTableCellRenderer {
         TableHeaderRenderer() {
             setOpaque(true);
-            setBackground(SOFT_MINT);
-            setForeground(FOREST_GREEN);
-            setFont(appFont(Font.BOLD, 12f));
-            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+            setBackground(UiTheme.MINT);
+            setForeground(UiTheme.NEUTRAL_TEXT);
+            setFont(UiTheme.LABEL_FONT);
+            setBorder(BorderFactory.createEmptyBorder(
+                    0, UiTheme.SPACE_SM, 0, UiTheme.SPACE_SM));
         }
 
         @Override
@@ -761,21 +880,48 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                                                        int row, int column) {
             super.getTableCellRendererComponent(table, value, selected, focused,
                     row, column);
-            setBorder(BorderFactory.createEmptyBorder(0,
-                    column == 7 ? 24 : 10, 0, 10));
-            setHorizontalAlignment(column >= 1 && column <= 6
-                    ? SwingConstants.RIGHT : SwingConstants.LEFT);
+            final int leftInset;
+            if (column == 0) {
+                leftInset = UiTheme.SPACE_MD;
+            }
+            else if (column == 2) {
+                leftInset = UiTheme.SPACE_LG;
+            }
+            else {
+                leftInset = UiTheme.SPACE_SM;
+            }
+            setBorder(BorderFactory.createEmptyBorder(
+                    0, leftInset, 0, UiTheme.SPACE_SM));
+            if (column == 7) {
+                setHorizontalAlignment(SwingConstants.CENTER);
+            }
+            else if (column == 1 || column >= 3 && column <= 6) {
+                setHorizontalAlignment(SwingConstants.RIGHT);
+            }
+            else {
+                setHorizontalAlignment(SwingConstants.LEFT);
+            }
             return this;
         }
     }
 
     private static class NutritionTableRenderer extends DefaultTableCellRenderer {
         private final boolean emphasize;
+        private final int leftInset;
+        private final int rightInset;
 
         NutritionTableRenderer(int alignment, boolean emphasize) {
+            this(alignment, emphasize, UiTheme.SPACE_SM, UiTheme.SPACE_SM);
+        }
+
+        NutritionTableRenderer(int alignment, boolean emphasize,
+                               int leftInset, int rightInset) {
             this.emphasize = emphasize;
+            this.leftInset = leftInset;
+            this.rightInset = rightInset;
             setHorizontalAlignment(alignment);
-            setBorder(BorderFactory.createEmptyBorder(0, 10, 0, 10));
+            setBorder(BorderFactory.createEmptyBorder(
+                    0, leftInset, 0, rightInset));
         }
 
         @Override
@@ -784,10 +930,14 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                                                        int row, int column) {
             super.getTableCellRendererComponent(table, value, selected, focused,
                     row, column);
-            setFont(appFont(emphasize ? Font.BOLD : Font.PLAIN, 13f));
-            setForeground(TEXT);
+            setBorder(BorderFactory.createEmptyBorder(
+                    0, leftInset, 0, rightInset));
+            setFont(UiTheme.BODY_FONT.deriveFont(
+                    emphasize ? Font.BOLD : Font.PLAIN));
+            setForeground(UiTheme.TEXT_PRIMARY);
             if (!selected) {
-                setBackground(row % 2 == 0 ? WHITE : ROW_ALTERNATE);
+                setBackground(row % 2 == 0
+                        ? UiTheme.SURFACE : UiTheme.BACKGROUND);
             }
             return this;
         }
@@ -795,12 +945,12 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     private static class StatusRenderer extends JLabel
             implements javax.swing.table.TableCellRenderer {
-        private Color rowBackground = WHITE;
-        private Color badgeBackground = new Color(232, 238, 233);
+        private Color rowBackground = UiTheme.SURFACE;
+        private Color badgeBackground = UiTheme.BORDER;
 
         StatusRenderer() {
             setHorizontalAlignment(SwingConstants.CENTER);
-            setFont(appFont(Font.BOLD, 12f));
+            setFont(UiTheme.LABEL_FONT.deriveFont(Font.BOLD, 12f));
             setOpaque(false);
         }
 
@@ -811,21 +961,21 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             final String fullStatus = value == null ? "" : value.toString();
             if (fullStatus.startsWith("Available")) {
                 setText("Available");
-                badgeBackground = new Color(208, 242, 217);
-                setForeground(FOREST_GREEN);
+                badgeBackground = UiTheme.SUCCESS_BACKGROUND;
+                setForeground(UiTheme.SECONDARY);
             }
             else if (fullStatus.startsWith("Estimated")) {
                 setText("Estimated");
-                badgeBackground = SOFT_BEIGE;
-                setForeground(WARNING_TEXT);
+                badgeBackground = UiTheme.WARNING_BACKGROUND;
+                setForeground(UiTheme.WARNING_TEXT);
             }
             else {
                 setText("Not Available");
-                badgeBackground = new Color(232, 238, 233);
-                setForeground(TEXT);
+                badgeBackground = UiTheme.NEUTRAL_BACKGROUND;
+                setForeground(UiTheme.NEUTRAL_TEXT);
             }
-            rowBackground = selected ? SOFT_MINT
-                    : row % 2 == 0 ? WHITE : ROW_ALTERNATE;
+            rowBackground = selected ? UiTheme.MINT
+                    : row % 2 == 0 ? UiTheme.SURFACE : UiTheme.BACKGROUND;
             setToolTipText(fullStatus);
             return this;
         }
@@ -850,12 +1000,43 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         }
     }
 
+    /** Clips the table header and rows into one rounded table surface. */
+    private static class RoundedTableScrollPane extends JScrollPane {
+        private static final int RADIUS = UiTheme.CONTROL_RADIUS;
+
+        RoundedTableScrollPane(JTable table) {
+            super(table);
+            setOpaque(false);
+        }
+
+        @Override
+        public void paint(Graphics graphics) {
+            final Shape roundedShape = new RoundRectangle2D.Double(
+                    0, 0, getWidth() - 1, getHeight() - 1, RADIUS, RADIUS);
+            final Graphics2D clippedGraphics = (Graphics2D) graphics.create();
+            clippedGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            clippedGraphics.clip(roundedShape);
+            clippedGraphics.setColor(UiTheme.SURFACE);
+            clippedGraphics.fill(roundedShape);
+            super.paint(clippedGraphics);
+            clippedGraphics.dispose();
+
+            final Graphics2D borderGraphics = (Graphics2D) graphics.create();
+            borderGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
+                    RenderingHints.VALUE_ANTIALIAS_ON);
+            borderGraphics.setColor(UiTheme.BORDER);
+            borderGraphics.draw(roundedShape);
+            borderGraphics.dispose();
+        }
+    }
+
     /** Keeps overflow scrolling available without a bulky default scrollbar. */
     private static class MinimalScrollBarUI extends BasicScrollBarUI {
         @Override
         protected void configureScrollBarColors() {
-            thumbColor = new Color(184, 198, 187);
-            trackColor = WHITE;
+            thumbColor = UiTheme.PRIMARY;
+            trackColor = UiTheme.SURFACE;
         }
 
         @Override
