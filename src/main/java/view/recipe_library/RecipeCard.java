@@ -19,7 +19,6 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 import interface_adapter.recipe_library.RecipeDisplayData;
-import view.UiTheme;
 
 /**
  * One recipe summary in the browsing list.
@@ -36,15 +35,15 @@ final class RecipeCard extends JPanel {
         JPanel text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.setOpaque(false);
-        text.add(label(recipe.getName(), UiTheme.SECTION_HEADING_FONT,
-                UiTheme.TEXT_PRIMARY, "recipe-card-name-" + recipeId));
-        text.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+        text.add(label(recipe.getName(), EditorialTheme.serif(Font.BOLD, 18f),
+                EditorialTheme.TEXT, "recipe-card-name-" + recipeId));
+        text.add(Box.createVerticalStrut(6));
         text.add(label(categoryText(recipe.getCategory()),
-                UiTheme.BODY_FONT, UiTheme.TEXT_SECONDARY,
+                EditorialTheme.sans(Font.PLAIN, 13f), EditorialTheme.MUTED,
                 "recipe-card-category-" + recipeId));
-        text.add(Box.createVerticalStrut(UiTheme.SPACE_XS));
+        text.add(Box.createVerticalStrut(4));
         text.add(label(servingsText(recipe.getServings()),
-                UiTheme.LABEL_FONT, UiTheme.SECONDARY,
+                EditorialTheme.sans(Font.PLAIN, 13f), EditorialTheme.GOLD,
                 "recipe-card-servings-" + recipeId));
         add(text, BorderLayout.CENTER);
         installPointer(this, pointer(onSelect));
@@ -56,11 +55,11 @@ final class RecipeCard extends JPanel {
         JPanel text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
         text.setOpaque(false);
-        text.add(bar(168, 14, UiTheme.TEXT_PRIMARY));
-        text.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
-        text.add(bar(96, 10, UiTheme.TEXT_SECONDARY));
-        text.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
-        text.add(bar(72, 10, UiTheme.SECONDARY));
+        text.add(bar(168, 14, EditorialTheme.TEXT));
+        text.add(Box.createVerticalStrut(10));
+        text.add(bar(96, 10, EditorialTheme.MUTED));
+        text.add(Box.createVerticalStrut(8));
+        text.add(bar(72, 10, EditorialTheme.GOLD));
         card.add(text, BorderLayout.CENTER);
         card.installPointer(card, card.pointer(onSelect));
         return card;
@@ -73,9 +72,7 @@ final class RecipeCard extends JPanel {
         setLayout(new BorderLayout());
         setOpaque(false);
         setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        setBorder(BorderFactory.createEmptyBorder(
-                UiTheme.SPACE_LG, UiTheme.CARD_PADDING,
-                UiTheme.SPACE_LG, UiTheme.CARD_PADDING));
+        setBorder(BorderFactory.createEmptyBorder(16, 18, 16, 18));
         setAlignmentX(LEFT_ALIGNMENT);
         refreshColors();
     }
@@ -133,12 +130,11 @@ final class RecipeCard extends JPanel {
         graphics2D.setColor(getBackground());
         graphics2D.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1,
                 EditorialTheme.CORNER_ARC, EditorialTheme.CORNER_ARC);
-        graphics2D.setColor(selected ? UiTheme.SECONDARY : UiTheme.BORDER);
         if (selected) {
-            graphics2D.setStroke(new java.awt.BasicStroke(UiTheme.FOCUS_WIDTH));
+            graphics2D.setColor(EditorialTheme.GOLD);
+            graphics2D.drawRoundRect(1, 1, getWidth() - 4, getHeight() - 4,
+                    EditorialTheme.CORNER_ARC, EditorialTheme.CORNER_ARC);
         }
-        graphics2D.drawRoundRect(1, 1, getWidth() - 4, getHeight() - 4,
-                EditorialTheme.CORNER_ARC, EditorialTheme.CORNER_ARC);
         graphics2D.dispose();
         super.paintComponent(graphics);
     }

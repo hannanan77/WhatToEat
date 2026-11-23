@@ -1,26 +1,34 @@
 package view.recipe_library;
 
 import java.awt.Color;
-
-import view.UiTheme;
+import java.awt.Font;
 
 /**
- * Recipe library colors and type, mapped onto the shared {@link UiTheme}.
+ * Shared colors and type for the luxury editorial recipe screens.
+ * Later screens can reuse these values in a team-wide theme.
  */
 public final class EditorialTheme {
 
-    public static final Color BACKGROUND = UiTheme.BACKGROUND;
-    public static final Color CARD = UiTheme.SURFACE;
-    public static final Color CARD_HOVER = UiTheme.MINT;
-    public static final Color CARD_SELECTED = UiTheme.BUTTON_SECONDARY_HOVER;
-    public static final Color CARD_SELECTED_HOVER = UiTheme.BUTTON_SECONDARY_PRESSED;
-    public static final Color IMAGE_WELL = UiTheme.MINT;
-    public static final Color TEXT = UiTheme.TEXT_PRIMARY;
-    public static final Color MUTED = UiTheme.TEXT_SECONDARY;
+    public static final Color BACKGROUND = Color.decode("#151C25");
+    public static final Color CARD = Color.decode("#202B37");
+    public static final Color CARD_HOVER = Color.decode("#2A3847");
+    public static final Color CARD_SELECTED = Color.decode("#314155");
+    public static final Color CARD_SELECTED_HOVER = Color.decode("#3A4C63");
+    public static final Color IMAGE_WELL = Color.decode("#1B2632");
+    public static final Color GOLD = Color.decode("#BBA37F");
+    public static final Color TEXT = Color.decode("#F6F0E6");
+    public static final Color MUTED = Color.decode("#AEBAC6");
 
-    /** Swing arc diameter, matching {@link view.components.ThemeCard}. */
-    public static final int CORNER_ARC = UiTheme.CARD_RADIUS * 2;
+    public static final int CORNER_ARC = 16;
 
     private EditorialTheme() {
+    }
+
+    public static Font serif(int style, float size) {
+        return new Font(Font.SERIF, style, 1).deriveFont(style, size);
+    }
+
+    public static Font sans(int style, float size) {
+        return new Font(Font.SANS_SERIF, style, 1).deriveFont(style, size);
     }
 }
