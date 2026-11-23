@@ -12,6 +12,18 @@ public class WeeklyMealPlanController {
         this.interactor = interactor;
     }
 
+    public void loadPlan() {
+        interactor.loadPlan();
+    }
+
+    public void clearPlan() {
+        interactor.clearPlan();
+    }
+
+    public void savePlan() {
+        interactor.savePlan();
+    }
+
     public void addEntry(
             String date, String mealType, String recipeId) {
         WeeklyMealPlanInputData inputData =
