@@ -17,7 +17,8 @@ public class WeeklyMealPlanPresenter
     @Override
     public void prepareSuccessView(
             WeeklyMealPlanOutputData outputData) {
-        viewModel.showSuccess(outputData.getEntries());
+        viewModel.showSuccess(outputData.getEntries(), outputData.getAssignments(),
+                outputData.getMessage());
     }
 
     @Override

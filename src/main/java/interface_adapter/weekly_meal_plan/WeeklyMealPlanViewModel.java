@@ -1,5 +1,7 @@
 package interface_adapter.weekly_meal_plan;
 
+import entity.MealPlanEntry;
+
 import java.beans.PropertyChangeListener;
 import java.beans.PropertyChangeSupport;
 import java.util.ArrayList;
@@ -12,6 +14,7 @@ public class WeeklyMealPlanViewModel {
             new PropertyChangeSupport(this);
 
     private List<String> entries = new ArrayList<>();
+    private List<MealPlanEntry> assignments = List.of();
     private String message = "";
 
     public List<String> getEntries() {
@@ -22,9 +25,15 @@ public class WeeklyMealPlanViewModel {
         return message;
     }
 
-    public void showSuccess(List<String> updatedEntries) {
+    public List<MealPlanEntry> getAssignments() {
+        return assignments;
+    }
+
+    public void showSuccess(List<String> updatedEntries, List<MealPlanEntry> updatedAssignments,
+                            String successMessage) {
         entries = new ArrayList<>(updatedEntries);
-        message = "Meal assignment added.";
+        assignments = List.copyOf(updatedAssignments);
+        message = successMessage;
         support.firePropertyChange("state", null, null);
     }
 

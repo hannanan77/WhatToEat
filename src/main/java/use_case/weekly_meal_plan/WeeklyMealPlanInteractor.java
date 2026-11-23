@@ -3,22 +3,33 @@ package use_case.weekly_meal_plan;
 import entity.MealPlan;
 import entity.MealPlanEntry;
 
+import java.io.IOException;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Adds meal assignments to the current weekly plan. */
+/** Manages the current weekly meal plan and its saved copy. */
 public class WeeklyMealPlanInteractor
         implements WeeklyMealPlanInputBoundary {
 
-    private final MealPlan mealPlan;
+    private MealPlan mealPlan;
+    private final WeeklyMealPlanDataAccessInterface dataAccess;
     private final WeeklyMealPlanOutputBoundary presenter;
 
     public WeeklyMealPlanInteractor(
             MealPlan mealPlan,
             WeeklyMealPlanOutputBoundary presenter) {
+        this(mealPlan, presenter, null);
+    }
+
+    public WeeklyMealPlanInteractor(
+            MealPlan mealPlan,
+            WeeklyMealPlanOutputBoundary presenter,
+            WeeklyMealPlanDataAccessInterface dataAccess) {
         this.mealPlan = mealPlan;
+        this.dataAccess = dataAccess;
         this.presenter = presenter;
     }
 
@@ -29,6 +40,12 @@ public class WeeklyMealPlanInteractor
             return;
         }
 
+        if (inputData.getRecipeId() == null || inputData.getRecipeId().isBlank()) {
+            presenter.prepareFailView("Please select a recipe.");
+            return;
+        }
+
+        String message;
         try {
             LocalDate date = LocalDate.parse(
                     inputData.getDate().trim());
@@ -38,7 +55,13 @@ public class WeeklyMealPlanInteractor
                     inputData.getMealType(),
                     inputData.getRecipeId());
 
-            mealPlan.addEntry(entry);
+            if (mealPlan.getEntry(date, entry.getMealType()) == null) {
+                mealPlan.addEntry(entry);
+                message = "Meal assignment added.";
+            } else {
+                mealPlan.replaceEntry(entry);
+                message = "Meal assignment replaced.";
+            }
         } catch (DateTimeParseException exception) {
             presenter.prepareFailView(
                     "Please enter a valid date in YYYY-MM-DD format.");
@@ -48,8 +71,50 @@ public class WeeklyMealPlanInteractor
             return;
         }
 
+        presentPlan(message);
+    }
+
+    @Override
+    public void clearPlan() {
+        mealPlan = new MealPlan(mealPlan.getWeekStartDate());
+        presentPlan("Weekly plan cleared. Save to keep these changes.");
+    }
+
+    @Override
+    public void loadPlan() {
+        if (dataAccess == null) {
+            presentPlan("");
+            return;
+        }
+        try {
+            mealPlan = dataAccess.load(mealPlan.getWeekStartDate());
+            presentPlan("");
+        } catch (IOException exception) {
+            presenter.prepareFailView("Could not load the weekly meal plan.");
+        }
+    }
+
+    @Override
+    public void savePlan() {
+        if (dataAccess == null) {
+            presenter.prepareFailView("Meal plan storage is unavailable.");
+            return;
+        }
+        try {
+            dataAccess.save(mealPlan);
+            presentPlan("Weekly meal plan saved.");
+        } catch (IOException exception) {
+            presenter.prepareFailView("Could not save the weekly meal plan.");
+        }
+    }
+
+    private void presentPlan(String message) {
+        List<MealPlanEntry> assignments = new ArrayList<>(mealPlan.getEntries());
+        assignments.sort(Comparator.comparing(MealPlanEntry::getDate)
+                .thenComparingInt(entry -> List.of("Breakfast", "Lunch", "Dinner")
+                        .indexOf(entry.getMealType())));
         List<String> entries = new ArrayList<>();
-        for (MealPlanEntry entry : mealPlan.getEntries()) {
+        for (MealPlanEntry entry : assignments) {
             entries.add(
                     entry.getDate() + " | "
                             + entry.getMealType() + " | "
@@ -57,6 +122,6 @@ public class WeeklyMealPlanInteractor
         }
 
         presenter.prepareSuccessView(
-                new WeeklyMealPlanOutputData(entries));
+                new WeeklyMealPlanOutputData(entries, assignments, message));
     }
 }
