@@ -4,7 +4,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+import javax.swing.BorderFactory;
+import javax.swing.JButton;
 import javax.swing.JFrame;
+import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
@@ -18,6 +21,7 @@ import use_case.view_nutrition.NutritionDataAccessInterface;
 import use_case.view_nutrition.ViewNutritionInputBoundary;
 import use_case.view_nutrition.ViewNutritionInteractor;
 import use_case.view_nutrition.ViewNutritionOutputBoundary;
+import view.ViewNutritionDialog;
 import view.ViewNutritionView;
 
 /**
@@ -38,27 +42,36 @@ public class ViewNutritionPreview {
         final ViewNutritionInputBoundary inputBoundary =
                 new ViewNutritionInteractor(nutritionDataAccess, outputBoundary);
         final ViewNutritionController controller =
-                new ViewNutritionController(inputBoundary);
+                new ViewNutritionController(inputBoundary, viewModel);
 
         final ViewNutritionView view = new ViewNutritionView(viewModel);
         view.setViewNutritionController(controller);
-        view.setSelectedRecipe(createSampleRecipe());
 
         final JFrame frame = new JFrame("WhatToEat - View Nutrition Preview");
         frame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
-        frame.setContentPane(view);
-        frame.setSize(1280, 800);
+        final JPanel content = new JPanel();
+        content.setBorder(BorderFactory.createEmptyBorder(48, 48, 48, 48));
+        final JButton openButton = new JButton("View Nutrition");
+        content.add(openButton);
+        frame.setContentPane(content);
+        frame.setSize(460, 240);
         frame.setLocationRelativeTo(null);
+
+        final ViewNutritionDialog dialog = new ViewNutritionDialog(frame, view);
+        openButton.addActionListener(event ->
+                dialog.showForRecipe(createSampleRecipe(), openButton));
         frame.setVisible(true);
     }
 
     private static Recipe createSampleRecipe() {
         final List<Ingredient> ingredients = Arrays.asList(
                 new Ingredient("Chicken Breast", 200.0, "g"),
-                new Ingredient("Whole Wheat Pasta", 250.0, "g"),
+                new Ingredient("Whole Wheat Penne Pasta", 250.0, "g"),
                 new Ingredient("Yellow Onion", 1.0, "piece"),
-                new Ingredient("Olive Oil", 2.0, "tbsp"),
-                new Ingredient("Fresh Basil", null, "g")
+                new Ingredient("Cherry Tomatoes", 150.0, "g"),
+                new Ingredient("Extra Virgin Olive Oil", 2.0, "tbsp"),
+                new Ingredient("Sea Salt & Black Pepper", 1.0, "pinch"),
+                new Ingredient("Fresh Basil", 10.0, "g")
         );
         final List<String> instructions = Arrays.asList(
                 "Cook the pasta.",
@@ -79,15 +92,21 @@ public class ViewNutritionPreview {
                 case "Chicken Breast":
                     return nutrition(165.0, 31.0, 0.0, 3.6,
                             false, null);
-                case "Whole Wheat Pasta":
+                case "Whole Wheat Penne Pasta":
                     return nutrition(350.0, 12.0, 72.0, 1.5,
-                            true, "Demonstration nutrition estimate.");
+                            false, null);
                 case "Yellow Onion":
                     return nutrition(40.0, 1.1, 9.3, 0.1,
                             false, null);
-                case "Olive Oil":
+                case "Cherry Tomatoes":
+                    return nutrition(18.0, 0.9, 3.9, 0.2,
+                            false, null);
+                case "Extra Virgin Olive Oil":
                     return nutrition(884.0, 0.0, 0.0, 100.0,
-                            true, "Demonstration nutrition estimate.");
+                            false, null);
+                case "Fresh Basil":
+                    return nutrition(23.0, 3.2, 2.7, 0.6,
+                            false, null);
                 default:
                     return Optional.empty();
             }
@@ -98,7 +117,7 @@ public class ViewNutritionPreview {
             if ("Yellow Onion".equals(ingredient.getName())) {
                 return Optional.of(110.0);
             }
-            if ("Olive Oil".equals(ingredient.getName())) {
+            if ("Extra Virgin Olive Oil".equals(ingredient.getName())) {
                 return Optional.of(27.0);
             }
             return Optional.empty();

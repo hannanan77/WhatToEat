@@ -1,4 +1,4 @@
-package interface_adapter.browse_recipes;
+package interface_adapter.recipe_library;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,6 +23,9 @@ public final class RecipeDisplayData {
     private final String imageUrl;
     private final List<String> ingredients;
     private final List<String> instructions;
+    private final String attribution;
+    private final String externalId;
+    private final boolean importable;
 
     /**
      * Creates display data.
@@ -47,6 +50,27 @@ public final class RecipeDisplayData {
                              String imageUrl,
                              List<String> ingredients,
                              List<String> instructions) {
+        this(id, name, category, servings, imageUrl, ingredients, instructions,
+                null, null, false);
+    }
+
+    /**
+     * Creates display data, including optional online-import details.
+     *
+     * @param attribution source credit, or null for a locally created recipe
+     * @param externalId TheMealDB meal id when this result can be imported
+     * @param importable whether Import to Collection should be offered
+     */
+    public RecipeDisplayData(String id,
+                             String name,
+                             String category,
+                             Integer servings,
+                             String imageUrl,
+                             List<String> ingredients,
+                             List<String> instructions,
+                             String attribution,
+                             String externalId,
+                             boolean importable) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Recipe id must not be blank.");
         }
@@ -61,6 +85,9 @@ public final class RecipeDisplayData {
         this.imageUrl = blankToNull(imageUrl);
         this.ingredients = copyLines(ingredients);
         this.instructions = copyLines(instructions);
+        this.attribution = blankToNull(attribution);
+        this.externalId = blankToNull(externalId);
+        this.importable = importable && this.externalId != null;
     }
 
     public String getId() {
@@ -89,6 +116,18 @@ public final class RecipeDisplayData {
 
     public List<String> getInstructions() {
         return instructions;
+    }
+
+    public String getAttribution() {
+        return attribution;
+    }
+
+    public String getExternalId() {
+        return externalId;
+    }
+
+    public boolean isImportable() {
+        return importable;
     }
 
     private static String blankToNull(String value) {

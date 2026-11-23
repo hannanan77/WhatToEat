@@ -1,9 +1,8 @@
-package view;
+package view.recipe_library;
 
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
@@ -11,16 +10,20 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Consumer;
 
 import javax.imageio.ImageIO;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -34,7 +37,13 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 
-import interface_adapter.browse_recipes.RecipeDisplayData;
+import entity.Recipe;
+import interface_adapter.recipe_library.RecipeDisplayData;
+import interface_adapter.recipe_library.RecipeBrowserViewModel;
+import interface_adapter.recipe_library.RecipeSelectionResolver;
+import view.UiTheme;
+import view.components.ThemeButton;
+import view.components.UiComponents;
 
 /**
  * Reusable recipe browser. It is a panel, not an application frame.
@@ -54,6 +63,20 @@ import interface_adapter.browse_recipes.RecipeDisplayData;
 public class RecipesPanel extends JPanel {
 
     private final JTextField searchField = new JTextField();
+    private final JLabel statusLabel = new JLabel(" ");
+    private Runnable onlineSearchAction = () -> {
+    };
+    private Runnable showCollectionAction = () -> {
+    };
+    private Consumer<String> importAction = externalId -> {
+    };
+    private Consumer<Recipe> recipeSelectionAction = recipe -> {
+    };
+    private Runnable recipeSelectionClearedAction = () -> {
+    };
+    private Consumer<String> recipeSelectionFailedAction = message -> {
+    };
+    private RecipeSelectionResolver recipeResolver;
     private final EditorialScrollContent cardList = new EditorialScrollContent();
     private final EditorialScrollContent detailContent = new EditorialScrollContent();
     private final JScrollPane listScroll = scrollPane(cardList, "recipes-list-scroll");
@@ -64,6 +87,7 @@ public class RecipesPanel extends JPanel {
     private boolean frameSelection;
     private int emptyFrameCount;
     private int imageRequest;
+    private int selectionRequest;
 
     public RecipesPanel() {
         setName("recipes-panel");
@@ -90,9 +114,11 @@ public class RecipesPanel extends JPanel {
             }
         });
 
-        JPanel left = column(searchColumn(), listScroll, 24, 24, 24, 12);
+        JPanel left = column(searchColumn(), listScroll,
+                UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING, UiTheme.SPACE_MD);
         left.setName("recipes-left");
-        JPanel right = column(null, detailScroll, 24, 12, 24, 24);
+        JPanel right = column(null, detailScroll,
+                UiTheme.PAGE_PADDING, UiTheme.SPACE_MD, UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING);
         right.setName("recipes-right");
         layoutColumns(left, right);
         rebuildCards();
@@ -110,13 +136,86 @@ public class RecipesPanel extends JPanel {
      */
     public void showEmptyCardFrames(int count) {
         Runnable update = () -> {
+            boolean dropSelection = selectedId != null;
             recipes.clear();
             selectedId = null;
             frameSelection = false;
             emptyFrameCount = Math.max(0, count);
+            if (dropSelection) {
+                selectionRequest++;
+                recipeSelectionClearedAction.run();
+            }
             rebuildCards();
             renderDetails();
         };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
+    }
+
+    public void bind(RecipeBrowserViewModel viewModel) {
+        viewModel.addPropertyChangeListener(event -> {
+            setStatusMessage(viewModel.getStatus());
+            setRecipes(viewModel.getRecipes());
+        });
+        setStatusMessage(viewModel.getStatus());
+        setRecipes(viewModel.getRecipes());
+    }
+
+    public void setOnlineSearchAction(Runnable action) {
+        onlineSearchAction = action == null ? () -> { } : action;
+    }
+
+    public void setShowCollectionAction(Runnable action) {
+        showCollectionAction = action == null ? () -> { } : action;
+    }
+
+    public void setImportAction(Consumer<String> action) {
+        importAction = action == null ? externalId -> { } : action;
+    }
+
+    /**
+     * Receives the complete recipe after the current selection has been loaded.
+     * It is not called with an id, display data, or a failed lookup.
+     */
+    public void setRecipeSelectionAction(Consumer<Recipe> action) {
+        recipeSelectionAction = action == null ? recipe -> { } : action;
+    }
+
+    /**
+     * Runs when the selection is no longer valid, including the moment another
+     * recipe is chosen.
+     */
+    public void setRecipeSelectionClearedAction(Runnable action) {
+        recipeSelectionClearedAction = action == null ? () -> { } : action;
+    }
+
+    /**
+     * Runs when the selected recipe cannot be loaded.
+     * The argument is a short message for the caller to show or ignore.
+     */
+    public void setRecipeSelectionFailedAction(Consumer<String> action) {
+        recipeSelectionFailedAction = action == null ? message -> { } : action;
+    }
+
+    /**
+     * Loads a complete recipe away from this view.
+     * Without a resolver, the panel still shows the selection and does not publish one.
+     */
+    public void setRecipeResolver(RecipeSelectionResolver resolver) {
+        recipeResolver = resolver;
+    }
+
+    public String getSearchText() {
+        return searchField.getText();
+    }
+
+    public void setStatusMessage(String message) {
+        Runnable update = () -> statusLabel.setText(message == null || message.isBlank()
+                ? " " : message);
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
         }
@@ -136,6 +235,7 @@ public class RecipesPanel extends JPanel {
     }
 
     private void applyRecipes(List<RecipeDisplayData> recipes) {
+        String previousId = selectedId;
         emptyFrameCount = 0;
         frameSelection = false;
         this.recipes.clear();
@@ -148,6 +248,10 @@ public class RecipesPanel extends JPanel {
         }
         if (findById(selectedId) == null) {
             selectedId = null;
+        }
+        if (previousId != null && selectedId == null) {
+            selectionRequest++;
+            recipeSelectionClearedAction.run();
         }
         rebuildCards();
         renderDetails();
@@ -173,34 +277,44 @@ public class RecipesPanel extends JPanel {
         heading.setOpaque(false);
 
         JLabel title = new JLabel("Recipes");
-        title.setFont(EditorialTheme.serif(Font.BOLD, 34f));
-        title.setForeground(EditorialTheme.TEXT);
+        title.setFont(UiTheme.HEADING_FONT);
+        title.setForeground(UiTheme.TEXT_PRIMARY);
         title.setAlignmentX(LEFT_ALIGNMENT);
 
-        JPanel rule = new JPanel();
-        rule.setBackground(EditorialTheme.GOLD);
-        rule.setPreferredSize(new Dimension(42, 2));
-        rule.setMaximumSize(new Dimension(42, 2));
-        rule.setAlignmentX(LEFT_ALIGNMENT);
-
-        JLabel searchLabel = new JLabel("SEARCH");
-        searchLabel.setFont(EditorialTheme.sans(Font.PLAIN, 12f));
-        searchLabel.setForeground(EditorialTheme.GOLD);
+        JLabel searchLabel = new JLabel("Search");
+        searchLabel.setFont(UiTheme.LABEL_FONT);
+        searchLabel.setForeground(UiTheme.TEXT_PRIMARY);
         searchLabel.setAlignmentX(LEFT_ALIGNMENT);
 
         heading.add(title);
-        heading.add(Box.createVerticalStrut(8));
-        heading.add(rule);
-        heading.add(Box.createVerticalStrut(22));
+        heading.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
         heading.add(searchLabel);
-        heading.add(Box.createVerticalStrut(8));
+        heading.add(Box.createVerticalStrut(UiTheme.LABEL_GAP));
         heading.add(searchField);
+        heading.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
+
+        JButton searchOnline = actionButton("Search TheMealDB", "recipes-search-online", true);
+        searchOnline.addActionListener(event -> onlineSearchAction.run());
+
+        JButton collection = actionButton("My Collection", "recipes-show-collection", false);
+        collection.addActionListener(event -> showCollectionAction.run());
+
+        statusLabel.setName("recipes-status");
+        statusLabel.setFont(UiTheme.CAPTION_FONT);
+        statusLabel.setForeground(UiTheme.TEXT_SECONDARY);
+        statusLabel.setAlignmentX(LEFT_ALIGNMENT);
+
+        heading.add(searchOnline);
+        heading.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+        heading.add(collection);
+        heading.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
+        heading.add(statusLabel);
         return heading;
     }
 
     private JPanel column(JPanel header, JScrollPane scroll,
                           int top, int left, int bottom, int right) {
-        JPanel column = new JPanel(new BorderLayout(0, 18));
+        JPanel column = new JPanel(new BorderLayout(0, UiTheme.SPACE_LG));
         column.setOpaque(false);
         column.setBorder(BorderFactory.createEmptyBorder(top, left, bottom, right));
         if (header != null) {
@@ -242,7 +356,7 @@ public class RecipesPanel extends JPanel {
                 constraints.weightx = 1;
                 constraints.fill = GridBagConstraints.HORIZONTAL;
                 constraints.anchor = GridBagConstraints.NORTHWEST;
-                constraints.insets = new Insets(0, 0, 12, 0);
+                constraints.insets = new Insets(0, 0, UiTheme.SPACE_MD, 0);
                 RecipeCard card = new RecipeCard(recipe, () -> selectRecipe(recipe.getId()));
                 card.setSelected(recipe.getId().equals(selectedId));
                 cardList.add(card, constraints);
@@ -270,7 +384,7 @@ public class RecipesPanel extends JPanel {
             constraints.weightx = 1;
             constraints.fill = GridBagConstraints.HORIZONTAL;
             constraints.anchor = GridBagConstraints.NORTHWEST;
-            constraints.insets = new Insets(0, 0, 12, 0);
+            constraints.insets = new Insets(0, 0, UiTheme.SPACE_MD, 0);
             RecipeCard card = RecipeCard.emptyFrame(frameId, () -> selectRecipe(frameId));
             card.setSelected(frameId.equals(selectedId));
             cardList.add(card, constraints);
@@ -289,14 +403,16 @@ public class RecipesPanel extends JPanel {
     private JLabel listMessage(String text) {
         JLabel message = new JLabel(text, SwingConstants.CENTER);
         message.setName("recipes-list-message");
-        message.setFont(EditorialTheme.serif(Font.PLAIN, 22f));
-        message.setForeground(EditorialTheme.MUTED);
+        message.setFont(UiTheme.SECTION_HEADING_FONT);
+        message.setForeground(UiTheme.TEXT_SECONDARY);
         return message;
     }
 
     private void selectRecipe(String recipeId) {
         selectedId = recipeId;
         frameSelection = false;
+        int request = ++selectionRequest;
+        recipeSelectionClearedAction.run();
         for (Component component : cardList.getComponents()) {
             if (component instanceof RecipeCard) {
                 RecipeCard card = (RecipeCard) component;
@@ -308,44 +424,93 @@ public class RecipesPanel extends JPanel {
             }
         }
         renderDetails();
+        if (frameSelection || recipeResolver == null) {
+            return;
+        }
+        RecipeDisplayData selected = findById(recipeId);
+        if (selected == null) {
+            return;
+        }
+        recipeResolver.resolve(
+                selected.getId(),
+                selected.getExternalId(),
+                recipe -> deliverSelection(request, recipe),
+                message -> deliverFailure(request, message));
+    }
+
+    private void deliverSelection(int request, Recipe recipe) {
+        Runnable update = () -> {
+            if (request != selectionRequest) {
+                return;
+            }
+            if (recipe == null || selectedId == null || !recipe.getId().equals(selectedId)) {
+                recipeSelectionFailedAction.accept("The recipe could not be loaded.");
+                return;
+            }
+            recipeSelectionAction.accept(recipe);
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
+    }
+
+    private void deliverFailure(int request, String message) {
+        Runnable update = () -> {
+            if (request != selectionRequest) {
+                return;
+            }
+            recipeSelectionFailedAction.accept(message == null || message.isBlank()
+                    ? "The recipe could not be loaded."
+                    : message);
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        }
+        else {
+            SwingUtilities.invokeLater(update);
+        }
     }
 
     private void renderDetails() {
         imageRequest++;
         detailContent.removeAll();
         detailContent.setLayout(new BoxLayout(detailContent, BoxLayout.Y_AXIS));
-        detailContent.setBorder(BorderFactory.createEmptyBorder(4, 8, 24, 8));
+        detailContent.setBorder(BorderFactory.createEmptyBorder(
+                UiTheme.SPACE_XS, UiTheme.SPACE_SM, UiTheme.PAGE_PADDING, UiTheme.SPACE_SM));
 
         RecipeDisplayData selected = findById(selectedId);
         if (frameSelection) {
             detailContent.add(imageArea(null));
             detailContent.add(Box.createVerticalStrut(22));
-            detailContent.add(frameBar(280, 28, EditorialTheme.TEXT));
-            detailContent.add(Box.createVerticalStrut(12));
-            detailContent.add(frameBar(140, 14, EditorialTheme.GOLD));
+            detailContent.add(frameBar(280, 28, UiTheme.TEXT_PRIMARY));
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
+            detailContent.add(frameBar(140, 14, UiTheme.SECONDARY));
             detailContent.add(Box.createVerticalStrut(18));
             detailContent.add(horizontalRule());
             detailContent.add(Box.createVerticalStrut(18));
-            detailContent.add(sectionTitle("INGREDIENTS"));
+            detailContent.add(sectionTitle("Ingredients"));
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
+            detailContent.add(frameBar(220, 12, UiTheme.TEXT_SECONDARY));
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_XL));
+            detailContent.add(sectionTitle("Instructions"));
             detailContent.add(Box.createVerticalStrut(12));
-            detailContent.add(frameBar(220, 12, EditorialTheme.MUTED));
-            detailContent.add(Box.createVerticalStrut(22));
-            detailContent.add(sectionTitle("INSTRUCTIONS"));
-            detailContent.add(Box.createVerticalStrut(12));
-            detailContent.add(frameBar(360, 12, EditorialTheme.MUTED));
-            detailContent.add(Box.createVerticalStrut(10));
-            detailContent.add(frameBar(300, 12, EditorialTheme.MUTED));
+            detailContent.add(frameBar(360, 12, UiTheme.TEXT_SECONDARY));
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
+            detailContent.add(frameBar(300, 12, UiTheme.TEXT_SECONDARY));
         }
         else if (selected == null) {
             detailContent.add(Box.createVerticalGlue());
             JLabel message = new JLabel("Select a recipe to explore.");
             message.setName("recipes-detail-message");
-            message.setFont(EditorialTheme.serif(Font.PLAIN, 30f));
-            message.setForeground(EditorialTheme.TEXT);
+            message.setFont(UiTheme.HEADING_FONT);
+            message.setForeground(UiTheme.TEXT_PRIMARY);
             message.setAlignmentX(CENTER_ALIGNMENT);
             JLabel support = new JLabel("The list is waiting for a selection.");
-            support.setFont(EditorialTheme.sans(Font.PLAIN, 14f));
-            support.setForeground(EditorialTheme.MUTED);
+            support.setFont(UiTheme.BODY_FONT);
+            support.setForeground(UiTheme.TEXT_SECONDARY);
             support.setAlignmentX(CENTER_ALIGNMENT);
             detailContent.add(message);
             detailContent.add(Box.createVerticalStrut(10));
@@ -358,15 +523,23 @@ public class RecipesPanel extends JPanel {
             detailContent.add(detailName(selected.getName()));
             detailContent.add(Box.createVerticalStrut(8));
             detailContent.add(detailServings(selected.getServings()));
+            if (selected.getAttribution() != null) {
+                detailContent.add(Box.createVerticalStrut(8));
+                detailContent.add(attributionLabel(selected.getAttribution()));
+            }
+            if (selected.isImportable()) {
+                detailContent.add(Box.createVerticalStrut(14));
+                detailContent.add(importButton(selected.getExternalId()));
+            }
             detailContent.add(Box.createVerticalStrut(18));
             detailContent.add(horizontalRule());
             detailContent.add(Box.createVerticalStrut(18));
-            detailContent.add(sectionTitle("INGREDIENTS"));
+            detailContent.add(sectionTitle("Ingredients"));
             detailContent.add(Box.createVerticalStrut(10));
             detailContent.add(linesPanel(selected.getIngredients(),
                     "recipe-detail-ingredients", "No ingredients provided."));
             detailContent.add(Box.createVerticalStrut(22));
-            detailContent.add(sectionTitle("INSTRUCTIONS"));
+            detailContent.add(sectionTitle("Instructions"));
             detailContent.add(Box.createVerticalStrut(10));
             detailContent.add(instructionPanel(selected.getInstructions()));
         }
@@ -379,8 +552,8 @@ public class RecipesPanel extends JPanel {
     private JLabel detailName(String name) {
         JLabel label = new JLabel(name);
         label.setName("recipe-detail-name");
-        label.setFont(EditorialTheme.serif(Font.BOLD, 34f));
-        label.setForeground(EditorialTheme.TEXT);
+        label.setFont(UiTheme.HEADING_FONT);
+        label.setForeground(UiTheme.TEXT_PRIMARY);
         label.setAlignmentX(LEFT_ALIGNMENT);
         return label;
     }
@@ -388,8 +561,8 @@ public class RecipesPanel extends JPanel {
     private JLabel detailServings(Integer servings) {
         JLabel label = new JLabel(RecipeCard.servingsText(servings));
         label.setName("recipe-detail-servings");
-        label.setFont(EditorialTheme.sans(Font.PLAIN, 15f));
-        label.setForeground(EditorialTheme.GOLD);
+        label.setFont(UiTheme.BODY_FONT);
+        label.setForeground(UiTheme.SECONDARY);
         label.setAlignmentX(LEFT_ALIGNMENT);
         return label;
     }
@@ -426,13 +599,14 @@ public class RecipesPanel extends JPanel {
         area.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
         area.setAlignmentX(LEFT_ALIGNMENT);
         area.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(EditorialTheme.GOLD, 1, true),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
+                new LineBorder(UiTheme.BORDER, 1, true),
+                BorderFactory.createEmptyBorder(
+                        UiTheme.SPACE_MD, UiTheme.SPACE_MD, UiTheme.SPACE_MD, UiTheme.SPACE_MD)));
 
         JLabel imageLabel = new JLabel("No image available", SwingConstants.CENTER);
         imageLabel.setName("recipe-detail-image-message");
-        imageLabel.setForeground(EditorialTheme.MUTED);
-        imageLabel.setFont(EditorialTheme.sans(Font.PLAIN, 14f));
+        imageLabel.setForeground(UiTheme.TEXT_SECONDARY);
+        imageLabel.setFont(UiTheme.BODY_FONT);
         area.add(imageLabel, BorderLayout.CENTER);
         showImage(imageUrl, imageLabel, imageRequest);
         return area;
@@ -491,8 +665,8 @@ public class RecipesPanel extends JPanel {
             if (isRemote(imageUrl)) {
                 return ImageIO.read(new URL(imageUrl));
             }
-            File file = new File(imageUrl);
-            if (!file.isFile()) {
+            File file = localImageFile(imageUrl);
+            if (file == null || !file.isFile()) {
                 return null;
             }
             return ImageIO.read(file);
@@ -500,6 +674,22 @@ public class RecipesPanel extends JPanel {
         catch (Exception exception) {
             return null;
         }
+    }
+
+    /**
+     * Add Recipe stores a local picture as a file URI.
+     * A normal filesystem path is still accepted.
+     */
+    private static File localImageFile(String imageUrl) {
+        if (imageUrl.regionMatches(true, 0, "file:", 0, 5)) {
+            try {
+                return new File(new URI(imageUrl));
+            }
+            catch (URISyntaxException exception) {
+                return null;
+            }
+        }
+        return new File(imageUrl);
     }
 
     private static Image scale(Image source, int maxWidth, int maxHeight) {
@@ -522,17 +712,32 @@ public class RecipesPanel extends JPanel {
         return scaled;
     }
 
+    private JLabel attributionLabel(String attribution) {
+        JLabel label = new JLabel(attribution);
+        label.setName("recipe-detail-attribution");
+        label.setFont(UiTheme.CAPTION_FONT);
+        label.setForeground(UiTheme.TEXT_SECONDARY);
+        label.setAlignmentX(LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JButton importButton(String externalId) {
+        JButton button = actionButton("Import to Collection", "recipe-import-button", true);
+        button.addActionListener(event -> importAction.accept(externalId));
+        return button;
+    }
+
     private JLabel sectionTitle(String title) {
         JLabel label = new JLabel(title);
-        label.setFont(EditorialTheme.sans(Font.PLAIN, 12f));
-        label.setForeground(EditorialTheme.GOLD);
+        label.setFont(UiTheme.LABEL_FONT);
+        label.setForeground(UiTheme.SECONDARY);
         label.setAlignmentX(LEFT_ALIGNMENT);
         return label;
     }
 
     private JPanel horizontalRule() {
         JPanel rule = new JPanel();
-        rule.setBackground(EditorialTheme.GOLD);
+        rule.setBackground(UiTheme.BORDER);
         rule.setPreferredSize(new Dimension(1, 1));
         rule.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
         rule.setAlignmentX(LEFT_ALIGNMENT);
@@ -546,11 +751,11 @@ public class RecipesPanel extends JPanel {
         panel.setOpaque(false);
         panel.setAlignmentX(LEFT_ALIGNMENT);
         if (lines.isEmpty()) {
-            panel.add(bodyLabel(emptyText, EditorialTheme.MUTED));
+            panel.add(bodyLabel(emptyText, UiTheme.TEXT_SECONDARY));
             return panel;
         }
         for (String line : lines) {
-            panel.add(bodyLabel(line, EditorialTheme.TEXT));
+            panel.add(bodyLabel(line, UiTheme.TEXT_PRIMARY));
             panel.add(Box.createVerticalStrut(6));
         }
         return panel;
@@ -563,7 +768,7 @@ public class RecipesPanel extends JPanel {
         panel.setOpaque(false);
         panel.setAlignmentX(LEFT_ALIGNMENT);
         if (instructions.isEmpty()) {
-            panel.add(bodyLabel("No instructions provided.", EditorialTheme.MUTED));
+            panel.add(bodyLabel("No instructions provided.", UiTheme.TEXT_SECONDARY));
             return panel;
         }
         int number = 1;
@@ -580,11 +785,11 @@ public class RecipesPanel extends JPanel {
         row.setOpaque(false);
         row.setAlignmentX(LEFT_ALIGNMENT);
         JLabel index = new JLabel(String.format("%02d", number));
-        index.setFont(EditorialTheme.serif(Font.BOLD, 16f));
-        index.setForeground(EditorialTheme.GOLD);
+        index.setFont(UiTheme.SECTION_HEADING_FONT);
+        index.setForeground(UiTheme.SECONDARY);
         index.setVerticalAlignment(SwingConstants.TOP);
         row.add(index, BorderLayout.WEST);
-        row.add(bodyLabel(instruction, EditorialTheme.TEXT), BorderLayout.CENTER);
+        row.add(bodyLabel(instruction, UiTheme.TEXT_PRIMARY), BorderLayout.CENTER);
         Dimension preferred = row.getPreferredSize();
         row.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
         return row;
@@ -592,7 +797,7 @@ public class RecipesPanel extends JPanel {
 
     private JTextArea bodyLabel(String text, java.awt.Color color) {
         JTextArea area = new JTextArea(text);
-        area.setFont(EditorialTheme.sans(Font.PLAIN, 15f));
+        area.setFont(UiTheme.BODY_FONT);
         area.setForeground(color);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
@@ -626,23 +831,24 @@ public class RecipesPanel extends JPanel {
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setVerticalScrollBarPolicy(
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        UiComponents.styleScrollPane(scrollPane);
         return scrollPane;
     }
 
     private static void styleSearchField(JTextField field) {
-        field.setBackground(EditorialTheme.CARD);
-        field.setForeground(EditorialTheme.TEXT);
-        field.setCaretColor(EditorialTheme.GOLD);
-        field.setFont(EditorialTheme.sans(Font.PLAIN, 15f));
-        field.setSelectedTextColor(EditorialTheme.BACKGROUND);
-        field.setSelectionColor(EditorialTheme.GOLD);
-        field.setBorder(BorderFactory.createCompoundBorder(
-                new LineBorder(EditorialTheme.GOLD, 1, true),
-                BorderFactory.createEmptyBorder(10, 12, 10, 12)));
-        field.setToolTipText("Filter recipes by name");
+        UiComponents.styleTextField(field);
+        field.setToolTipText("Filter the current list, or search TheMealDB by name");
         Dimension size = field.getPreferredSize();
         field.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
         field.setAlignmentX(LEFT_ALIGNMENT);
+    }
+
+    private static JButton actionButton(String text, String name, boolean primary) {
+        ThemeButton button = new ThemeButton(text, primary);
+        button.setName(name);
+        button.setAlignmentX(LEFT_ALIGNMENT);
+        Dimension size = button.getPreferredSize();
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, size.height));
+        return button;
     }
 }
