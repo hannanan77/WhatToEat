@@ -11,13 +11,13 @@ import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
-import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.awt.Shape;
 import java.awt.geom.Path2D;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
@@ -26,19 +26,17 @@ import java.util.List;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.Icon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.JViewport;
 import javax.swing.ScrollPaneConstants;
 import javax.swing.JTable;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
-import javax.swing.plaf.basic.BasicButtonUI;
-import javax.swing.plaf.basic.BasicScrollBarUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
@@ -46,6 +44,9 @@ import javax.swing.table.JTableHeader;
 import entity.Recipe;
 import interface_adapter.view_nutrition.ViewNutritionController;
 import interface_adapter.view_nutrition.ViewNutritionViewModel;
+import view.components.RoundedBorder;
+import view.components.ThemeButton;
+import view.components.UiComponents;
 
 /**
  * Reusable nutrition content panel intended for a modal dialog.
@@ -56,11 +57,14 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             "Totals include available data and reasonable estimates based on typical "
                     + "weights and reference nutrition. Values that cannot be estimated "
                     + "remain N/A and are excluded.";
+    private static final String PARTIAL_AVAILABLE_MESSAGE =
+            "Totals include available nutrition data. Values that cannot be determined "
+                    + "remain N/A and are excluded.";
     private static final String ESTIMATE_MESSAGE =
             "Some values use reasonable estimates based on typical ingredient weights "
                     + "and reference nutrition.";
     private static final String UNAVAILABLE_MESSAGE =
-            "Nutrition could not be estimated reliably. Missing values remain N/A and "
+            "Nutrition could not be calculated reliably. Missing values remain N/A and "
                     + "are excluded from totals.";
 
     private static final String[] TABLE_COLUMNS = {
@@ -71,17 +75,19 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     private final ViewNutritionViewModel viewModel;
     private final JLabel recipeNameLabel = new JLabel("No recipe selected");
     private final JLabel servingsLabel = new JLabel("Servings unavailable");
-    private final JLabel calculationNoteLabel = new JLabel(
-            "Nutrition values are estimates based on ingredient quantities.");
+    private final JLabel calculationNoteSeparator = separatorLabel();
+    private final JLabel calculationNoteLabel = new JLabel();
     private final JLabel[] totalValueLabels = createValueLabels();
     private final JLabel[] perServingValueLabels = createValueLabels();
     private final RoundedPanel statusPanel = new RoundedPanel(
-            UiTheme.MINT, UiTheme.BORDER, 14);
+            UiTheme.MINT, UiTheme.BORDER, UiTheme.CONTROL_RADIUS);
     private final JLabel statusTitleLabel = new JLabel("Nutrition details");
     private final JTextArea statusArea = new JTextArea();
     private final JProgressBar loadingIndicator = new JProgressBar();
-    private final RoundedButton retryButton = new RoundedButton("Retry", ButtonStyle.SECONDARY);
-    private final RoundedButton footerCloseButton = new RoundedButton("Close", ButtonStyle.PRIMARY);
+    private final ThemeButton retryButton =
+            new ThemeButton("Retry", ThemeButton.Variant.SECONDARY);
+    private final ThemeButton footerCloseButton =
+            new KeyboardFocusThemeButton("Close", ThemeButton.Variant.PRIMARY);
     private final JLabel ingredientCountLabel = new JLabel("0 ingredients");
     private final Component statusGap = Box.createVerticalStrut(UiTheme.SPACE_SM);
     private final DefaultTableModel tableModel = new DefaultTableModel(TABLE_COLUMNS, 0) {
@@ -102,7 +108,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
             return super.getToolTipText(event);
         }
     };
-    private final JScrollPane tableScrollPane = new RoundedTableScrollPane(ingredientTable);
+    private final JScrollPane tableScrollPane = new JScrollPane(ingredientTable);
 
     private ViewNutritionController controller;
     private Recipe selectedRecipe;
@@ -134,6 +140,13 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         footerCloseButton.addActionListener(event -> closeAction.run());
         footerCloseButton.getAccessibleContext().setAccessibleName("Close nutrition dialog");
         footerCloseButton.setToolTipText("Close dialog (Esc)");
+        calculationNoteLabel.setName("nutrition-calculation-note");
+        statusPanel.setName("nutrition-status-panel");
+        statusTitleLabel.setName("nutrition-status-title");
+        statusArea.setName("nutrition-status-message");
+        statusGap.setName("nutrition-status-gap");
+        ingredientTable.setName("nutrition-ingredient-table");
+        tableScrollPane.setName("nutrition-table-scroll");
         statusArea.getAccessibleContext().setAccessibleName("Nutrition status");
         ingredientTable.getAccessibleContext().setAccessibleName("Ingredient nutrition breakdown");
         addComponentListener(new ComponentAdapter() {
@@ -158,6 +171,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                     ? "Servings unavailable"
                     : servingText(recipe.getServings()));
         }
+        setCalculationNote(null);
         clearDisplayedNutrition();
     }
 
@@ -236,7 +250,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         details.add(recipeNameLabel);
         details.add(separatorLabel());
         details.add(servingsLabel);
-        details.add(separatorLabel());
+        details.add(calculationNoteSeparator);
         details.add(calculationNoteLabel);
         details.setAlignmentX(LEFT_ALIGNMENT);
 
@@ -276,7 +290,8 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         loadingIndicator.setPreferredSize(new Dimension(120, 4));
         loadingIndicator.setMaximumSize(new Dimension(Integer.MAX_VALUE, 4));
 
-        retryButton.setPreferredSize(new Dimension(80, 34));
+        retryButton.setPreferredSize(
+                new Dimension(80, UiTheme.BUTTON_MIN_HEIGHT));
         statusPanel.add(textPanel, BorderLayout.CENTER);
         statusPanel.add(retryButton, BorderLayout.EAST);
         statusPanel.add(loadingIndicator, BorderLayout.SOUTH);
@@ -285,6 +300,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     private JPanel createNutritionSummary() {
         final JPanel panel = new JPanel(new GridLayout(1, 2, 14, 0));
+        panel.setName("nutrition-summary");
         panel.setOpaque(false);
         panel.setAlignmentX(LEFT_ALIGNMENT);
         panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 164));
@@ -333,7 +349,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     private JPanel createMetricPanel(String name, JLabel valueLabel,
                                      NutrientIconType iconType) {
         final RoundedPanel panel = new RoundedPanel(
-                UiTheme.SURFACE, UiTheme.BORDER, 14);
+                UiTheme.SURFACE, UiTheme.BORDER, UiTheme.CONTROL_RADIUS);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBorder(BorderFactory.createEmptyBorder(6, 10, 5, 10));
 
@@ -379,16 +395,20 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
         configureTable();
         tableScrollPane.setColumnHeaderView(ingredientTable.getTableHeader());
-        tableScrollPane.setBorder(BorderFactory.createEmptyBorder());
+        tableScrollPane.setOpaque(true);
+        tableScrollPane.setBackground(UiTheme.SURFACE);
+        tableScrollPane.setBorder(new RoundedBorder(1, 1));
+        tableScrollPane.getViewport().setOpaque(true);
         tableScrollPane.getViewport().setBackground(UiTheme.SURFACE);
+        tableScrollPane.getViewport().setScrollMode(JViewport.SIMPLE_SCROLL_MODE);
+        tableScrollPane.getColumnHeader().setOpaque(true);
+        tableScrollPane.getColumnHeader().setBackground(UiTheme.MINT);
         tableScrollPane.setHorizontalScrollBarPolicy(
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         tableScrollPane.setVerticalScrollBarPolicy(
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         tableScrollPane.setPreferredSize(new Dimension(984, 272));
-        tableScrollPane.getVerticalScrollBar().setUnitIncrement(18);
-        tableScrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(8, 0));
-        tableScrollPane.getVerticalScrollBar().setUI(new MinimalScrollBarUI());
+        UiComponents.styleScrollPane(tableScrollPane);
         panel.add(heading, BorderLayout.NORTH);
         panel.add(tableScrollPane, BorderLayout.CENTER);
         return panel;
@@ -400,7 +420,8 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         final JLabel note = new JLabel("~ marks estimates; * marks incomplete totals.");
         note.setFont(UiTheme.SMALL_LABEL_FONT.deriveFont(Font.PLAIN));
         note.setForeground(UiTheme.TEXT_SECONDARY);
-        footerCloseButton.setPreferredSize(new Dimension(100, 36));
+        footerCloseButton.setPreferredSize(
+                new Dimension(100, UiTheme.BUTTON_MIN_HEIGHT));
         footer.add(note, BorderLayout.WEST);
         footer.add(footerCloseButton, BorderLayout.EAST);
         return footer;
@@ -410,6 +431,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         ingredientTable.setFont(UiTheme.BODY_FONT);
         ingredientTable.setForeground(UiTheme.TEXT_PRIMARY);
         ingredientTable.setBackground(UiTheme.SURFACE);
+        ingredientTable.setOpaque(true);
         ingredientTable.setRowHeight(36);
         ingredientTable.setShowHorizontalLines(false);
         ingredientTable.setShowVerticalLines(false);
@@ -453,6 +475,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
 
     private void applyViewModelState() {
         if (viewModel.isLoading()) {
+            setCalculationNote(null);
             recipeNameLabel.setText(viewModel.getRecipeName());
             servingsLabel.setText(viewModel.getServings());
             clearNutritionValues();
@@ -461,6 +484,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         }
 
         if (viewModel.isError()) {
+            setCalculationNote(null);
             clearNutritionValues();
             showBanner(BannerType.ERROR, "Nutrition could not be loaded",
                     viewModel.getStatusMessage());
@@ -472,14 +496,19 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         updateValueLabels(totalValueLabels, viewModel.getTotalValues());
         updateValueLabels(perServingValueLabels, viewModel.getPerServingValues());
         updateIngredientRows(viewModel.getIngredientRows());
+        updateCalculationNote();
 
         if (!viewModel.isDataAvailable()) {
             showBanner(BannerType.WARNING, "Nutrition unavailable",
                     UNAVAILABLE_MESSAGE);
         }
         else if (!viewModel.isTotalComplete()) {
-            showBanner(BannerType.WARNING, "Partial Nutritional Estimate",
-                    PARTIAL_ESTIMATE_MESSAGE);
+            final boolean containsEstimates = viewModel.containsEstimates();
+            showBanner(BannerType.WARNING,
+                    containsEstimates
+                            ? "Partial Nutritional Estimate" : "Partial Nutrition Data",
+                    containsEstimates
+                            ? PARTIAL_ESTIMATE_MESSAGE : PARTIAL_AVAILABLE_MESSAGE);
         }
         else if (viewModel.containsEstimates()) {
             showBanner(BannerType.WARNING, "Estimated Nutrition",
@@ -589,6 +618,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private void configureInitialState() {
+        setCalculationNote(null);
         retryButton.setVisible(false);
         loadingIndicator.setVisible(false);
         clearNutritionValues();
@@ -597,6 +627,7 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     }
 
     private void clearDisplayedNutrition() {
+        setCalculationNote(null);
         clearNutritionValues();
         if (selectedRecipe == null) {
             showBanner(BannerType.INFO, "Nutrition details",
@@ -633,6 +664,30 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         ingredientCountLabel.setText(count + (count == 1 ? " ingredient" : " ingredients"));
     }
 
+    private void updateCalculationNote() {
+        final String message;
+        if (viewModel.containsEstimates() && !viewModel.isTotalComplete()) {
+            message = "Includes estimated and unavailable nutrition values.";
+        }
+        else if (viewModel.containsEstimates()) {
+            message = "Some nutrition values are estimated.";
+        }
+        else if (!viewModel.isTotalComplete()) {
+            message = "Some nutrition values are unavailable.";
+        }
+        else {
+            message = null;
+        }
+        setCalculationNote(message);
+    }
+
+    private void setCalculationNote(String message) {
+        final boolean visible = message != null && !message.isBlank();
+        calculationNoteLabel.setText(visible ? message : "");
+        calculationNoteLabel.setVisible(visible);
+        calculationNoteSeparator.setVisible(visible);
+    }
+
     private static JLabel[] createValueLabels() {
         return new JLabel[] {
             new JLabel("Not Available", SwingConstants.LEFT),
@@ -666,11 +721,6 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         LOADING,
         WARNING,
         ERROR
-    }
-
-    private enum ButtonStyle {
-        PRIMARY,
-        SECONDARY
     }
 
     private enum NutrientIconType {
@@ -789,12 +839,12 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
     private static class RoundedPanel extends JPanel {
         private Color panelColor;
         private final Color outlineColor;
-        private final int radius;
+        private final int arc;
 
-        RoundedPanel(Color panelColor, Color outlineColor, int radius) {
+        RoundedPanel(Color panelColor, Color outlineColor, int cornerRadius) {
             this.panelColor = panelColor;
             this.outlineColor = outlineColor;
-            this.radius = radius;
+            this.arc = cornerRadius * 2;
             setOpaque(false);
         }
 
@@ -810,64 +860,76 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
                     RenderingHints.VALUE_ANTIALIAS_ON);
             graphics2D.setColor(panelColor);
             graphics2D.fillRoundRect(0, 0, getWidth() - 1, getHeight() - 1,
-                    radius, radius);
+                    arc, arc);
             graphics2D.setColor(outlineColor);
             graphics2D.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1,
-                    radius, radius);
+                    arc, arc);
             graphics2D.dispose();
             super.paintComponent(graphics);
         }
     }
 
-    /** Paints stable hover, pressed, and keyboard-focus states. */
-    private static class RoundedButton extends JButton {
-        private static final int RADIUS = UiTheme.CONTROL_RADIUS;
-        private final ButtonStyle style;
+    /** Shows the shared focus ring only when focus arrived by keyboard traversal. */
+    private static class KeyboardFocusThemeButton extends ThemeButton {
+        private boolean keyboardFocusVisible;
+        private boolean suppressFocusDuringPaint;
 
-        RoundedButton(String text, ButtonStyle style) {
-            super(text);
-            this.style = style;
-            setUI(new BasicButtonUI());
-            setFont(UiTheme.LABEL_FONT);
-            setForeground(style == ButtonStyle.PRIMARY
-                    ? UiTheme.SURFACE : UiTheme.TEXT_PRIMARY);
-            setBorder(BorderFactory.createEmptyBorder(
-                    UiTheme.SPACE_SM, UiTheme.SPACE_LG,
-                    UiTheme.SPACE_SM, UiTheme.SPACE_LG));
-            setContentAreaFilled(false);
-            setBorderPainted(false);
-            setFocusPainted(false);
-            setOpaque(false);
-            setRolloverEnabled(true);
+        KeyboardFocusThemeButton(String text, Variant variant) {
+            super(text, variant);
+            addFocusListener(new FocusAdapter() {
+                @Override
+                public void focusGained(FocusEvent event) {
+                    keyboardFocusVisible = isKeyboardTraversal(event.getCause());
+                    repaint();
+                }
+
+                @Override
+                public void focusLost(FocusEvent event) {
+                    keyboardFocusVisible = false;
+                    repaint();
+                }
+            });
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent event) {
+                    hideKeyboardFocusRing();
+                }
+
+                @Override
+                public void mousePressed(MouseEvent event) {
+                    hideKeyboardFocusRing();
+                }
+            });
+        }
+
+        @Override
+        public boolean isFocusOwner() {
+            return super.isFocusOwner()
+                    && (!suppressFocusDuringPaint || keyboardFocusVisible);
         }
 
         @Override
         protected void paintComponent(Graphics graphics) {
-            final Graphics2D graphics2D = (Graphics2D) graphics.create();
-            graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics2D.setColor(buttonColor());
-            graphics2D.fillRoundRect(1, 1, getWidth() - 2, getHeight() - 2,
-                    RADIUS, RADIUS);
-
-            if (style != ButtonStyle.PRIMARY) {
-                graphics2D.setColor(getModel().isRollover() || hasFocus()
-                        ? UiTheme.PRIMARY : UiTheme.BORDER);
-                graphics2D.drawRoundRect(1, 1, getWidth() - 3, getHeight() - 3,
-                        RADIUS, RADIUS);
+            suppressFocusDuringPaint = !keyboardFocusVisible;
+            try {
+                super.paintComponent(graphics);
             }
-            graphics2D.dispose();
-            super.paintComponent(graphics);
+            finally {
+                suppressFocusDuringPaint = false;
+            }
         }
 
-        private Color buttonColor() {
-            if (style == ButtonStyle.PRIMARY) {
-                return getModel().isPressed() ? UiTheme.TEXT_PRIMARY
-                        : getModel().isRollover() || hasFocus()
-                                ? UiTheme.PRIMARY : UiTheme.SECONDARY;
-            }
-            return getModel().isPressed() ? UiTheme.BORDER
-                    : getModel().isRollover() ? UiTheme.SURFACE : UiTheme.MINT;
+        private void hideKeyboardFocusRing() {
+            keyboardFocusVisible = false;
+            repaint();
+        }
+
+        private static boolean isKeyboardTraversal(FocusEvent.Cause cause) {
+            return cause == FocusEvent.Cause.TRAVERSAL
+                    || cause == FocusEvent.Cause.TRAVERSAL_FORWARD
+                    || cause == FocusEvent.Cause.TRAVERSAL_BACKWARD
+                    || cause == FocusEvent.Cause.TRAVERSAL_UP
+                    || cause == FocusEvent.Cause.TRAVERSAL_DOWN;
         }
     }
 
@@ -1007,77 +1069,4 @@ public class ViewNutritionView extends JPanel implements PropertyChangeListener 
         }
     }
 
-    /** Clips the table header and rows into one rounded table surface. */
-    private static class RoundedTableScrollPane extends JScrollPane {
-        private static final int RADIUS = UiTheme.CONTROL_RADIUS;
-
-        RoundedTableScrollPane(JTable table) {
-            super(table);
-            setOpaque(false);
-        }
-
-        @Override
-        public void paint(Graphics graphics) {
-            final Shape roundedShape = new RoundRectangle2D.Double(
-                    0, 0, getWidth() - 1, getHeight() - 1, RADIUS, RADIUS);
-            final Graphics2D clippedGraphics = (Graphics2D) graphics.create();
-            clippedGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            clippedGraphics.clip(roundedShape);
-            clippedGraphics.setColor(UiTheme.SURFACE);
-            clippedGraphics.fill(roundedShape);
-            super.paint(clippedGraphics);
-            clippedGraphics.dispose();
-
-            final Graphics2D borderGraphics = (Graphics2D) graphics.create();
-            borderGraphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            borderGraphics.setColor(UiTheme.BORDER);
-            borderGraphics.draw(roundedShape);
-            borderGraphics.dispose();
-        }
-    }
-
-    /** Keeps overflow scrolling available without a bulky default scrollbar. */
-    private static class MinimalScrollBarUI extends BasicScrollBarUI {
-        @Override
-        protected void configureScrollBarColors() {
-            thumbColor = UiTheme.PRIMARY;
-            trackColor = UiTheme.SURFACE;
-        }
-
-        @Override
-        protected void paintThumb(Graphics graphics, javax.swing.JComponent component,
-                                  Rectangle bounds) {
-            if (!scrollbar.isEnabled() || bounds.isEmpty()) {
-                return;
-            }
-            final Graphics2D graphics2D = (Graphics2D) graphics.create();
-            graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING,
-                    RenderingHints.VALUE_ANTIALIAS_ON);
-            graphics2D.setColor(thumbColor);
-            graphics2D.fillRoundRect(bounds.x + 2, bounds.y, 4, bounds.height,
-                    4, 4);
-            graphics2D.dispose();
-        }
-
-        @Override
-        protected JButton createDecreaseButton(int orientation) {
-            return zeroSizeButton();
-        }
-
-        @Override
-        protected JButton createIncreaseButton(int orientation) {
-            return zeroSizeButton();
-        }
-
-        private JButton zeroSizeButton() {
-            final JButton button = new JButton();
-            final Dimension zero = new Dimension(0, 0);
-            button.setPreferredSize(zero);
-            button.setMinimumSize(zero);
-            button.setMaximumSize(zero);
-            return button;
-        }
-    }
 }

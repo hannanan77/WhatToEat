@@ -34,7 +34,7 @@ public class ViewNutritionDialog extends JDialog {
 
     private static final int DIALOG_WIDTH = 1040;
     private static final int DIALOG_HEIGHT = 740;
-    private static final int DIALOG_ARC = UiTheme.CARD_RADIUS;
+    private static final int DIALOG_ARC = UiTheme.DIALOG_RADIUS * 2;
 
     private final ViewNutritionView nutritionView;
     private Component returnFocusComponent;
