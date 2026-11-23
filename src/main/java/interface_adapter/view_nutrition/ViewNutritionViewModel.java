@@ -17,13 +17,15 @@ public class ViewNutritionViewModel {
             new PropertyChangeSupport(this);
 
     private String recipeName = "No recipe selected";
-    private String servings = "Servings: Not Available";
+    private String servings = "Servings unavailable";
     private String[] totalValues = unavailableValues();
     private String[] perServingValues = unavailableValues();
     private List<String[]> ingredientRows = new ArrayList<>();
     private String statusMessage = "Select a recipe to view its nutrition.";
     private boolean totalComplete;
     private boolean dataAvailable;
+    private boolean containsEstimates;
+    private boolean loading;
     private boolean error;
 
     public void addPropertyChangeListener(PropertyChangeListener listener) {
@@ -66,6 +68,14 @@ public class ViewNutritionViewModel {
         return dataAvailable;
     }
 
+    public boolean containsEstimates() {
+        return containsEstimates;
+    }
+
+    public boolean isLoading() {
+        return loading;
+    }
+
     public boolean isError() {
         return error;
     }
@@ -73,7 +83,8 @@ public class ViewNutritionViewModel {
     void setNutrition(String recipeName, String servings,
                       String[] totalValues, String[] perServingValues,
                       List<String[]> ingredientRows, String statusMessage,
-                      boolean totalComplete, boolean dataAvailable) {
+                      boolean totalComplete, boolean dataAvailable,
+                      boolean containsEstimates) {
         this.recipeName = recipeName;
         this.servings = servings;
         this.totalValues = totalValues.clone();
@@ -82,14 +93,39 @@ public class ViewNutritionViewModel {
         this.statusMessage = statusMessage;
         this.totalComplete = totalComplete;
         this.dataAvailable = dataAvailable;
+        this.containsEstimates = containsEstimates;
+        this.loading = false;
         this.error = false;
         notifyStateChanged();
     }
 
+    void setLoading(String recipeName, Integer servings) {
+        this.recipeName = recipeName;
+        this.servings = servings == null
+                ? "Servings unavailable"
+                : servings + (servings == 1 ? " serving" : " servings");
+        clearNutritionData();
+        statusMessage = "Retrieving nutrition information from USDA.";
+        loading = true;
+        error = false;
+        notifyStateChanged();
+    }
+
     void setError(String errorMessage) {
+        clearNutritionData();
         statusMessage = errorMessage;
+        loading = false;
         error = true;
         notifyStateChanged();
+    }
+
+    private void clearNutritionData() {
+        totalValues = unavailableValues();
+        perServingValues = unavailableValues();
+        ingredientRows = new ArrayList<>();
+        totalComplete = false;
+        dataAvailable = false;
+        containsEstimates = false;
     }
 
     private List<String[]> copyRows(List<String[]> rows) {
