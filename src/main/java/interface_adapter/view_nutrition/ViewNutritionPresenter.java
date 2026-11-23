@@ -39,13 +39,15 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
         }
 
         final String servings = outputData.getServings() == null
-                ? "Servings: Not Available"
-                : "Servings: " + outputData.getServings();
+                ? "Servings unavailable"
+                : outputData.getServings()
+                        + (outputData.getServings() == 1 ? " serving" : " servings");
         final String statusMessage = createStatusMessage(outputData, dataAvailable);
 
         viewModel.setNutrition(outputData.getRecipeName(), servings,
                 totalValues, perServingValues, rows, statusMessage,
-                outputData.isTotalComplete(), dataAvailable);
+                outputData.isTotalComplete(), dataAvailable,
+                outputData.containsEstimates());
     }
 
     @Override
@@ -59,11 +61,12 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
                 || ingredient.isEstimatedNutritionData();
         return new String[] {
             ingredient.getIngredientName(),
-            formatQuantity(ingredient.getQuantity(), ingredient.getUnit()),
-            formatValue(values.getCaloriesKcal(), " kcal", estimated, false),
-            formatValue(values.getProteinG(), " g", estimated, false),
-            formatValue(values.getCarbohydratesG(), " g", estimated, false),
-            formatValue(values.getFatG(), " g", estimated, false),
+            formatQuantity(ingredient.getQuantity()),
+            formatUnit(ingredient.getUnit()),
+            formatTableValue(values.getCaloriesKcal(), " kcal", estimated),
+            formatTableValue(values.getProteinG(), " g", estimated),
+            formatTableValue(values.getCarbohydratesG(), " g", estimated),
+            formatTableValue(values.getFatG(), " g", estimated),
             formatStatus(ingredient)
         };
     }
@@ -78,11 +81,18 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
         };
     }
 
-    private String formatQuantity(Double quantity, String unit) {
+    private String formatQuantity(Double quantity) {
         if (quantity == null) {
-            return "Unknown (" + unit + ")";
+            return "Unknown";
         }
-        return numberFormat.format(quantity) + " " + unit;
+        return numberFormat.format(quantity);
+    }
+
+    private String formatUnit(String unit) {
+        if (unit == null || unit.isBlank()) {
+            return "Not Available";
+        }
+        return unit;
     }
 
     private String formatValue(Double value, String unit,
@@ -93,6 +103,10 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
         final String prefix = estimated ? "~" : "";
         final String suffix = incomplete ? "*" : "";
         return prefix + numberFormat.format(value) + unit + suffix;
+    }
+
+    private String formatTableValue(Double value, String unit, boolean estimated) {
+        return value == null ? "N/A" : formatValue(value, unit, estimated, false);
     }
 
     private String formatStatus(IngredientBreakdown ingredient) {
@@ -127,20 +141,41 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
                                        boolean dataAvailable) {
         final List<String> parts = new ArrayList<>();
         if (!dataAvailable) {
-            parts.add("Nutrition is not available for this recipe.");
+            parts.add("Nutrition is unavailable for this recipe; unavailable values "
+                    + "are not treated as zero.");
         }
         else if (!outputData.isTotalComplete()) {
-            parts.add("Totals are incomplete and include only available values. * marks partial totals.");
+            parts.add("Totals include only available nutrient values; unavailable values "
+                    + "are not treated as zero.");
         }
         else {
             parts.add("Nutrition totals include all listed ingredients.");
         }
 
-        if (outputData.containsEstimates()) {
-            parts.add("~ marks values that include estimated weight or nutrition data.");
+        final List<String> estimatedIngredients = new ArrayList<>();
+        final List<String> unavailableIngredients = new ArrayList<>();
+        for (IngredientBreakdown ingredient : outputData.getIngredientBreakdown()) {
+            switch (ingredient.getStatus()) {
+                case ESTIMATED:
+                    estimatedIngredients.add(ingredient.getIngredientName());
+                    break;
+                case NOT_AVAILABLE:
+                    unavailableIngredients.add(ingredient.getIngredientName());
+                    break;
+                default:
+                    break;
+            }
         }
-        parts.addAll(outputData.getNotes());
-        return String.join("  ", parts);
+        if (!estimatedIngredients.isEmpty()) {
+            parts.add("Estimated: " + String.join(", ", estimatedIngredients) + ".");
+        }
+        if (!unavailableIngredients.isEmpty()) {
+            parts.add("Unavailable: " + String.join(", ", unavailableIngredients) + ".");
+        }
+        if (!outputData.isPerServingAvailable()) {
+            parts.add("Per-serving values require a known serving count.");
+        }
+        return String.join(" ", parts);
     }
 
     private String[] unavailableValues() {
