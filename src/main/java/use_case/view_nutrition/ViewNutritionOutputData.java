@@ -111,6 +111,7 @@ public class ViewNutritionOutputData {
         }
     }
 
+    private final long requestId;
     private final String recipeId;
     private final String recipeName;
     private final Integer servings;
@@ -128,6 +129,19 @@ public class ViewNutritionOutputData {
                                    List<IngredientBreakdown> ingredientBreakdown,
                                    List<String> notes, boolean totalComplete,
                                    boolean perServingAvailable, boolean containsEstimates) {
+        this(0L, recipeId, recipeName, servings, totalNutrition,
+                perServingNutrition, ingredientBreakdown, notes, totalComplete,
+                perServingAvailable, containsEstimates);
+    }
+
+    public ViewNutritionOutputData(long requestId,
+                                   String recipeId, String recipeName, Integer servings,
+                                   NutritionValues totalNutrition,
+                                   NutritionValues perServingNutrition,
+                                   List<IngredientBreakdown> ingredientBreakdown,
+                                   List<String> notes, boolean totalComplete,
+                                   boolean perServingAvailable, boolean containsEstimates) {
+        this.requestId = requestId;
         this.recipeId = recipeId;
         this.recipeName = recipeName;
         this.servings = servings;
@@ -139,6 +153,10 @@ public class ViewNutritionOutputData {
         this.totalComplete = totalComplete;
         this.perServingAvailable = perServingAvailable;
         this.containsEstimates = containsEstimates;
+    }
+
+    public long getRequestId() {
+        return requestId;
     }
 
     public String getRecipeId() {

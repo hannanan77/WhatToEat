@@ -22,7 +22,7 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
     }
 
     @Override
-    public void prepareSuccessView(ViewNutritionOutputData outputData) {
+    public synchronized void prepareSuccessView(ViewNutritionOutputData outputData) {
         final boolean dataAvailable = outputData.getTotalNutrition().hasAnyValue();
         final boolean markIncomplete = dataAvailable && !outputData.isTotalComplete();
         final String[] totalValues = formatNutrition(
@@ -44,15 +44,15 @@ public class ViewNutritionPresenter implements ViewNutritionOutputBoundary {
                         + (outputData.getServings() == 1 ? " serving" : " servings");
         final String statusMessage = createStatusMessage(outputData, dataAvailable);
 
-        viewModel.setNutrition(outputData.getRecipeName(), servings,
+        viewModel.setNutrition(outputData.getRequestId(), outputData.getRecipeName(), servings,
                 totalValues, perServingValues, rows, statusMessage,
                 outputData.isTotalComplete(), dataAvailable,
                 outputData.containsEstimates());
     }
 
     @Override
-    public void prepareFailView(String errorMessage) {
-        viewModel.setError(errorMessage);
+    public synchronized void prepareFailView(long requestId, String errorMessage) {
+        viewModel.setError(requestId, errorMessage);
     }
 
     private String[] formatIngredientRow(IngredientBreakdown ingredient) {
