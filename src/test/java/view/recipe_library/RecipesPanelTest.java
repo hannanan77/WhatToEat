@@ -1,8 +1,10 @@
 package view.recipe_library;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.awt.Component;
@@ -402,6 +404,181 @@ class RecipesPanelTest {
     }
 
     @Test
+    void viewNutritionStaysDisabledUntilTheSelectedRecipeResolves() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            JButton nutrition = nutritionButton(panel);
+            assertEquals("View Nutrition", nutrition.getText());
+            assertFalse(nutrition.isEnabled());
+
+            panel.setRecipes(List.of(recipe("oats", "Morning oats", "Breakfast", 2, null,
+                    List.of("80 g oats"), List.of("Simmer until soft"))));
+            click(find(panel, "recipe-card-oats"));
+            assertFalse(nutritionButton(panel).isEnabled());
+
+            List<Runnable> pending = new ArrayList<>();
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    pending.add(() -> onSuccess.accept(entity(recipeId))));
+            click(find(panel, "recipe-card-oats"));
+            nutrition = nutritionButton(panel);
+            assertFalse(nutrition.isEnabled());
+
+            pending.get(0).run();
+            assertTrue(nutrition.isEnabled());
+        });
+    }
+
+    @Test
+    void viewNutritionClickPassesTheResolvedRecipeAndTheButton() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            Recipe oats = entity("oats", "Morning oats");
+            Recipe[] opened = new Recipe[1];
+            Component[] source = new Component[1];
+            panel.setViewNutritionAction((recipe, button) -> {
+                opened[0] = recipe;
+                source[0] = button;
+            });
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onSuccess.accept(oats));
+            panel.setRecipes(List.of(recipe("oats", "Morning oats", "Breakfast", 2, null,
+                    List.of("80 g oats"), List.of("Simmer until soft"))));
+
+            click(find(panel, "recipe-card-oats"));
+            JButton nutrition = nutritionButton(panel);
+            assertTrue(nutrition.isEnabled());
+            nutrition.doClick();
+
+            assertSame(oats, opened[0]);
+            assertSame(nutrition, source[0]);
+        });
+    }
+
+    @Test
+    void changingOrClearingTheSelectionDisablesViewNutrition() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            Recipe oats = entity("oats", "Morning oats");
+            List<Runnable> pending = new ArrayList<>();
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onSuccess.accept(oats));
+            panel.setRecipes(List.of(
+                    recipe("oats", "Morning oats", null, 1, null,
+                            List.of("Oats"), List.of("Cook")),
+                    recipe("salad", "Herb salad", null, 1, null,
+                            List.of("Herbs"), List.of("Toss"))));
+
+            click(find(panel, "recipe-card-oats"));
+            assertTrue(nutritionButton(panel).isEnabled());
+
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    pending.add(() -> onSuccess.accept(entity(recipeId, "Herb salad"))));
+            click(find(panel, "recipe-card-salad"));
+            assertFalse(nutritionButton(panel).isEnabled());
+
+            pending.get(0).run();
+            assertTrue(nutritionButton(panel).isEnabled());
+
+            List<Recipe> opened = new ArrayList<>();
+            panel.setViewNutritionAction((recipe, button) -> opened.add(recipe));
+            panel.setRecipes(null);
+            JButton nutrition = nutritionButton(panel);
+            assertFalse(nutrition.isEnabled());
+            nutrition.doClick();
+            assertTrue(opened.isEmpty());
+        });
+    }
+
+    @Test
+    void failedResolutionCannotOpenAPreviouslySelectedRecipe() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            Recipe oats = entity("oats", "Morning oats");
+            List<Recipe> opened = new ArrayList<>();
+            panel.setViewNutritionAction((recipe, button) -> opened.add(recipe));
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onSuccess.accept(oats));
+            panel.setRecipes(List.of(
+                    recipe("oats", "Morning oats", null, 1, null,
+                            List.of("Oats"), List.of("Cook")),
+                    recipe("salad", "Herb salad", null, 1, null,
+                            List.of("Herbs"), List.of("Toss"))));
+
+            click(find(panel, "recipe-card-oats"));
+            nutritionButton(panel).doClick();
+            assertSame(oats, opened.get(0));
+
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onFailure.accept("That recipe is no longer available."));
+            click(find(panel, "recipe-card-salad"));
+            JButton nutrition = nutritionButton(panel);
+            assertFalse(nutrition.isEnabled());
+            nutrition.doClick();
+            assertEquals(1, opened.size());
+            assertSame(oats, opened.get(0));
+        });
+    }
+
+    @Test
+    void aStaleResolutionCannotEnableViewNutritionOrOpenAnOldRecipe() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            Recipe oats = entity("oats", "Morning oats");
+            Recipe salad = entity("salad", "Herb salad");
+            List<Recipe> opened = new ArrayList<>();
+            List<Runnable> pending = new ArrayList<>();
+            panel.setViewNutritionAction((recipe, button) -> opened.add(recipe));
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    pending.add(() -> onSuccess.accept(
+                            "salad".equals(recipeId) ? salad : oats)));
+            panel.setRecipes(List.of(
+                    recipe("oats", "Morning oats", null, 1, null,
+                            List.of("Oats"), List.of("Cook")),
+                    recipe("salad", "Herb salad", null, 1, null,
+                            List.of("Herbs"), List.of("Toss"))));
+
+            click(find(panel, "recipe-card-oats"));
+            click(find(panel, "recipe-card-salad"));
+            JButton nutrition = nutritionButton(panel);
+            assertFalse(nutrition.isEnabled());
+
+            pending.get(0).run();
+            assertFalse(nutrition.isEnabled());
+            nutrition.doClick();
+            assertTrue(opened.isEmpty());
+
+            pending.get(1).run();
+            assertTrue(nutrition.isEnabled());
+            nutrition.doClick();
+            assertEquals(1, opened.size());
+            assertSame(salad, opened.get(0));
+
+            pending.get(0).run();
+            nutrition.doClick();
+            assertEquals(2, opened.size());
+            assertSame(salad, opened.get(1));
+        });
+    }
+
+    @Test
+    void viewNutritionClickWithoutACallbackDoesNotThrow() {
+        onEdt(() -> {
+            RecipesPanel panel = layout(new RecipesPanel());
+            nutritionButton(panel).doClick();
+
+            panel.setRecipeResolver((recipeId, mealId, onSuccess, onFailure) ->
+                    onSuccess.accept(entity(recipeId)));
+            panel.setRecipes(List.of(recipe("oats", "Morning oats", "Breakfast", 1, null,
+                    List.of("Oats"), List.of("Cook"))));
+            click(find(panel, "recipe-card-oats"));
+            nutritionButton(panel).doClick();
+
+            panel.setViewNutritionAction(null);
+            nutritionButton(panel).doClick();
+        });
+    }
+
+    @Test
     void emptyFramesDoNotResolveARecipe() {
         onEdt(() -> {
             RecipesPanel panel = layout(new RecipesPanel());
@@ -414,8 +591,16 @@ class RecipesPanelTest {
         });
     }
 
+    private static JButton nutritionButton(Component root) {
+        return (JButton) find(root, "recipe-view-nutrition");
+    }
+
     private static Recipe entity(String id) {
-        return new Recipe(id, "Morning oats",
+        return entity(id, "Morning oats");
+    }
+
+    private static Recipe entity(String id, String name) {
+        return new Recipe(id, name,
                 List.of(new Ingredient("oats", 80.0, "g")),
                 List.of("Simmer until soft"),
                 null,
