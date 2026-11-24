@@ -16,6 +16,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import javax.imageio.ImageIO;
@@ -76,7 +77,11 @@ public class RecipesPanel extends JPanel {
     };
     private Consumer<String> recipeSelectionFailedAction = message -> {
     };
+    private BiConsumer<Recipe, Component> viewNutritionAction = (recipe, source) -> {
+    };
     private RecipeSelectionResolver recipeResolver;
+    private Recipe resolvedRecipe;
+    private JButton viewNutritionButton;
     private final EditorialScrollContent cardList = new EditorialScrollContent();
     private final EditorialScrollContent detailContent = new EditorialScrollContent();
     private final JScrollPane listScroll = scrollPane(cardList, "recipes-list-scroll");
@@ -143,6 +148,7 @@ public class RecipesPanel extends JPanel {
             emptyFrameCount = Math.max(0, count);
             if (dropSelection) {
                 selectionRequest++;
+                clearResolvedRecipe();
                 recipeSelectionClearedAction.run();
             }
             rebuildCards();
@@ -209,6 +215,15 @@ public class RecipesPanel extends JPanel {
         recipeResolver = resolver;
     }
 
+    /**
+     * Opens nutrition for the recipe that finished loading.
+     * The action receives that recipe and the button that was pressed.
+     * Clicks are ignored until a recipe has loaded, and a missing action is safe.
+     */
+    public void setViewNutritionAction(BiConsumer<Recipe, Component> action) {
+        viewNutritionAction = action == null ? (recipe, source) -> { } : action;
+    }
+
     public String getSearchText() {
         return searchField.getText();
     }
@@ -251,6 +266,7 @@ public class RecipesPanel extends JPanel {
         }
         if (previousId != null && selectedId == null) {
             selectionRequest++;
+            clearResolvedRecipe();
             recipeSelectionClearedAction.run();
         }
         rebuildCards();
@@ -412,6 +428,7 @@ public class RecipesPanel extends JPanel {
         selectedId = recipeId;
         frameSelection = false;
         int request = ++selectionRequest;
+        clearResolvedRecipe();
         recipeSelectionClearedAction.run();
         for (Component component : cardList.getComponents()) {
             if (component instanceof RecipeCard) {
@@ -444,10 +461,14 @@ public class RecipesPanel extends JPanel {
                 return;
             }
             if (recipe == null || selectedId == null || !recipe.getId().equals(selectedId)) {
+                clearResolvedRecipe();
                 recipeSelectionFailedAction.accept("The recipe could not be loaded.");
+                syncViewNutritionButton();
                 return;
             }
+            resolvedRecipe = recipe;
             recipeSelectionAction.accept(recipe);
+            syncViewNutritionButton();
         };
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
@@ -462,9 +483,11 @@ public class RecipesPanel extends JPanel {
             if (request != selectionRequest) {
                 return;
             }
+            clearResolvedRecipe();
             recipeSelectionFailedAction.accept(message == null || message.isBlank()
                     ? "The recipe could not be loaded."
                     : message);
+            syncViewNutritionButton();
         };
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
@@ -500,6 +523,8 @@ public class RecipesPanel extends JPanel {
             detailContent.add(frameBar(360, 12, UiTheme.TEXT_SECONDARY));
             detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
             detailContent.add(frameBar(300, 12, UiTheme.TEXT_SECONDARY));
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+            addViewNutritionButton(LEFT_ALIGNMENT);
         }
         else if (selected == null) {
             detailContent.add(Box.createVerticalGlue());
@@ -515,6 +540,8 @@ public class RecipesPanel extends JPanel {
             detailContent.add(message);
             detailContent.add(Box.createVerticalStrut(10));
             detailContent.add(support);
+            detailContent.add(Box.createVerticalStrut(UiTheme.SPACE_LG));
+            addViewNutritionButton(CENTER_ALIGNMENT);
             detailContent.add(Box.createVerticalGlue());
         }
         else {
@@ -531,6 +558,8 @@ public class RecipesPanel extends JPanel {
                 detailContent.add(Box.createVerticalStrut(14));
                 detailContent.add(importButton(selected.getExternalId()));
             }
+            detailContent.add(Box.createVerticalStrut(14));
+            addViewNutritionButton(LEFT_ALIGNMENT);
             detailContent.add(Box.createVerticalStrut(18));
             detailContent.add(horizontalRule());
             detailContent.add(Box.createVerticalStrut(18));
@@ -725,6 +754,45 @@ public class RecipesPanel extends JPanel {
         JButton button = actionButton("Import to Collection", "recipe-import-button", true);
         button.addActionListener(event -> importAction.accept(externalId));
         return button;
+    }
+
+    private void addViewNutritionButton(float alignment) {
+        JButton button = viewNutritionButton();
+        button.setAlignmentX(alignment);
+        detailContent.add(button);
+    }
+
+    private JButton viewNutritionButton() {
+        JButton button = actionButton("View Nutrition", "recipe-view-nutrition", true);
+        button.setEnabled(nutritionReady());
+        button.addActionListener(event -> openViewNutrition(button));
+        viewNutritionButton = button;
+        return button;
+    }
+
+    private void openViewNutrition(JButton button) {
+        Recipe recipe = resolvedRecipe;
+        if (!nutritionReady() || button != viewNutritionButton || !button.isEnabled()) {
+            return;
+        }
+        viewNutritionAction.accept(recipe, button);
+    }
+
+    private boolean nutritionReady() {
+        return resolvedRecipe != null
+                && selectedId != null
+                && selectedId.equals(resolvedRecipe.getId());
+    }
+
+    private void clearResolvedRecipe() {
+        resolvedRecipe = null;
+        syncViewNutritionButton();
+    }
+
+    private void syncViewNutritionButton() {
+        if (viewNutritionButton != null) {
+            viewNutritionButton.setEnabled(nutritionReady());
+        }
     }
 
     private JLabel sectionTitle(String title) {
