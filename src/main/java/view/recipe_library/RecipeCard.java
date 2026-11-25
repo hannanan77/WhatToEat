@@ -6,6 +6,7 @@ import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
+import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -34,10 +35,11 @@ final class RecipeCard extends JPanel {
     private boolean hovered;
 
     RecipeCard(RecipeDisplayData recipe, Runnable onSelect) {
-        this(recipe, onSelect, null, null);
+        this(recipe, onSelect, null, null, null);
     }
 
-    RecipeCard(RecipeDisplayData recipe, Runnable onSelect, String actionLabel, Runnable onAction) {
+    RecipeCard(RecipeDisplayData recipe, Runnable onSelect, String actionLabel,
+               Runnable onAction, Runnable onDelete) {
         this(recipe.getId(), false);
         JPanel text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
@@ -53,13 +55,26 @@ final class RecipeCard extends JPanel {
                 UiTheme.LABEL_FONT, UiTheme.SECONDARY,
                 "recipe-card-servings-" + recipeId));
         add(text, BorderLayout.CENTER);
-        JButton action = actionLabel == null ? null : new ThemeButton(actionLabel, false);
-        installPointer(this, pointer(onSelect, action));
-        if (action != null) {
+        JPanel actions = actionLabel == null ? null
+                : new JPanel(new FlowLayout(FlowLayout.RIGHT, UiTheme.SPACE_XS, 0));
+        installPointer(this, pointer(onSelect, actions));
+        if (actions != null) {
             setToolTipText("Drag left or right-click for recipe options");
-            action.setVisible(false);
-            action.addActionListener(event -> onAction.run());
-            add(action, BorderLayout.EAST);
+            actions.setOpaque(false);
+            actions.setVisible(false);
+            JButton visibility = new ThemeButton(actionLabel, false);
+            visibility.addActionListener(event -> onAction.run());
+            actions.add(visibility);
+            if (onDelete != null) {
+                JButton delete = new ThemeButton("Delete", false);
+                delete.setForeground(UiTheme.ERROR);
+                delete.addActionListener(event -> onDelete.run());
+                actions.add(delete);
+            }
+            JPanel actionArea = new JPanel(new java.awt.GridBagLayout());
+            actionArea.setOpaque(false);
+            actionArea.add(actions);
+            add(actionArea, BorderLayout.EAST);
         }
     }
 
@@ -93,7 +108,7 @@ final class RecipeCard extends JPanel {
         refreshColors();
     }
 
-    private MouseAdapter pointer(Runnable onSelect, JButton action) {
+    private MouseAdapter pointer(Runnable onSelect, JPanel action) {
         return new MouseAdapter() {
             private int pressX;
             private int pressY;

@@ -2,7 +2,9 @@ package data_access;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -97,6 +99,13 @@ public class FileRecipeLibraryDataAccess implements
         return false;
     }
 
+    public synchronized void delete(String recipeId) throws IOException {
+        List<JSONObject> recipes = readObjects();
+        if (recipes.removeIf(recipe -> recipeId.equals(recipe.optString("id")))) {
+            write(recipes);
+        }
+    }
+
     private List<JSONObject> readObjects() throws IOException {
         if (!Files.exists(file)) {
             return new ArrayList<>();
@@ -132,7 +141,21 @@ public class FileRecipeLibraryDataAccess implements
         }
         JSONObject root = new JSONObject();
         root.put("recipes", array);
-        Files.writeString(file, root.toString(2), StandardCharsets.UTF_8);
+        Path target = file.toAbsolutePath();
+        Path temporary = Files.createTempFile(target.getParent(), "recipes-", ".tmp");
+        try {
+            Files.writeString(temporary, root.toString(2), StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            }
+            catch (AtomicMoveNotSupportedException exception) {
+                Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        finally {
+            Files.deleteIfExists(temporary);
+        }
     }
 
     private JSONObject toJson(Recipe recipe,

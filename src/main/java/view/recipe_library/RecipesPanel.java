@@ -29,6 +29,7 @@ import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
+import javax.swing.JOptionPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -75,6 +76,7 @@ public class RecipesPanel extends JPanel {
     };
     private Runnable showCollectionAction = () -> {
     };
+    private Consumer<String> deleteAction;
     private Consumer<String> importAction = externalId -> {
     };
     private Consumer<Recipe> recipeSelectionAction = recipe -> {
@@ -188,6 +190,17 @@ public class RecipesPanel extends JPanel {
 
     public void setShowCollectionAction(Runnable action) {
         showCollectionAction = action == null ? () -> { } : action;
+    }
+
+    public void setDeleteAction(Consumer<String> action) {
+        deleteAction = action;
+        rebuildCards();
+    }
+
+    public void forgetHiddenRecipe(String recipeId) {
+        if (hiddenRecipes != null) {
+            hiddenRecipes.remove(hiddenKey(recipeId));
+        }
     }
 
     public void setImportAction(Consumer<String> action) {
@@ -423,7 +436,18 @@ public class RecipesPanel extends JPanel {
         }
         boolean hidden = isHidden(recipe);
         return new RecipeCard(recipe, select, hidden ? "Restore" : "Hide",
-                () -> setHidden(id, !hidden));
+                () -> setHidden(id, !hidden),
+                deleteAction == null ? null : () -> confirmDelete(recipe));
+    }
+
+    private void confirmDelete(RecipeDisplayData recipe) {
+        int answer = JOptionPane.showConfirmDialog(this,
+                "Delete “" + recipe.getName() + "” from My Collection? "
+                        + "Any meals using it will need a replacement.",
+                "Delete Recipe", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (answer == JOptionPane.OK_OPTION) {
+            deleteAction.accept(recipe.getId());
+        }
     }
 
     private boolean isHidden(RecipeDisplayData recipe) {

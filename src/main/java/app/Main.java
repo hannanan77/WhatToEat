@@ -1,9 +1,11 @@
 package app;
 
+import java.util.concurrent.ExecutionException;
 import java.util.prefs.Preferences;
 
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.WindowConstants;
 
 import data_access.FileRecipeLibraryDataAccess;
@@ -75,6 +77,29 @@ public class Main {
         recipesPanel.setOnlineSearchAction(
                 () -> searchController.execute(recipesPanel.getSearchText()));
         recipesPanel.setShowCollectionAction(browseController::execute);
+        recipesPanel.setDeleteAction(recipeId -> new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws java.io.IOException {
+                library.delete(recipeId);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    recipesPanel.forgetHiddenRecipe(recipeId);
+                    browseController.execute();
+                }
+                catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    recipesPanel.setStatusMessage("Recipe deletion was interrupted.");
+                }
+                catch (ExecutionException exception) {
+                    recipesPanel.setStatusMessage("Could not delete the recipe.");
+                }
+            }
+        }.execute());
         recipesPanel.setImportAction(importController::execute);
         recipesPanel.setRecipeResolver(selectionController);
 
