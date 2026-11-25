@@ -1,6 +1,7 @@
 package app;
 
 import javax.swing.JFrame;
+import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
@@ -19,7 +20,6 @@ import use_case.recipe_library.BrowseSavedRecipesInteractor;
 import use_case.recipe_library.ImportRecipeInteractor;
 import use_case.recipe_library.OnlineRecipeGateway;
 import use_case.recipe_library.RecipeImageCache;
-import use_case.recipe_library.RecipeLibraryDataAccessInterface;
 import use_case.recipe_library.ResolveSelectedRecipeInteractor;
 import use_case.recipe_library.SearchOnlineRecipesInteractor;
 import view.recipe_library.RecipesPanel;
@@ -34,7 +34,7 @@ public class Main {
         final JFrame mainFrame = new JFrame("WhatToEat");
         mainFrame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 
-        final RecipeLibraryDataAccessInterface library =
+        final FileRecipeLibraryDataAccess library =
                 new FileRecipeLibraryDataAccess(FileRecipeLibraryDataAccess.defaultFile());
         final RecipeImageCache images =
                 new LocalRecipeImageCache(LocalRecipeImageCache.defaultDirectory());
@@ -78,7 +78,13 @@ public class Main {
         final NutritionAssembly nutritionAssembly = new NutritionAssembly(mainFrame);
         recipesPanel.setViewNutritionAction(nutritionAssembly::showForRecipe);
 
-        mainFrame.setContentPane(recipesPanel);
+        final JTabbedPane navigation = new JTabbedPane();
+        navigation.addTab("Recipes", recipesPanel);
+        navigation.addTab("Add Recipe", AddRecipePreview.createView(library, () -> {
+            browseController.execute();
+            navigation.setSelectedComponent(recipesPanel);
+        }));
+        mainFrame.setContentPane(navigation);
         mainFrame.setSize(1100, 720);
         mainFrame.setLocationRelativeTo(null);
         mainFrame.setVisible(true);

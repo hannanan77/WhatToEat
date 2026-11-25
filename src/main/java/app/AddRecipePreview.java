@@ -4,6 +4,7 @@ import data_access.FileRecipeLibraryDataAccess;
 import interface_adapter.add_recipe.AddRecipeController;
 import interface_adapter.add_recipe.AddRecipePresenter;
 import interface_adapter.add_recipe.AddRecipeViewModel;
+import use_case.add_recipe.AddRecipeDataAccessInterface;
 import use_case.add_recipe.AddRecipeInteractor;
 import view.AddRecipeView;
 
@@ -17,24 +18,8 @@ public class AddRecipePreview {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            FileRecipeLibraryDataAccess recipeStore =
-                    new FileRecipeLibraryDataAccess(
-                            FileRecipeLibraryDataAccess.defaultFile()
-                    );
-
-            AddRecipeViewModel viewModel = new AddRecipeViewModel();
-
-            AddRecipePresenter presenter =
-                    new AddRecipePresenter(viewModel);
-
-            AddRecipeInteractor interactor =
-                    new AddRecipeInteractor(recipeStore, presenter);
-
-            AddRecipeController controller =
-                    new AddRecipeController(interactor);
-
-            AddRecipeView view = new AddRecipeView(viewModel);
-            view.setController(controller);
+            AddRecipeView view = createView(new FileRecipeLibraryDataAccess(
+                    FileRecipeLibraryDataAccess.defaultFile()), () -> {});
 
             JFrame window = new JFrame("WhatToEat - Add Recipe");
             window.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -43,5 +28,20 @@ public class AddRecipePreview {
             window.setLocationRelativeTo(null);
             window.setVisible(true);
         });
+    }
+
+    static AddRecipeView createView(AddRecipeDataAccessInterface recipeStore,
+                                    Runnable onRecipeSaved) {
+        AddRecipeViewModel viewModel = new AddRecipeViewModel();
+        AddRecipeInteractor interactor =
+                new AddRecipeInteractor(recipeStore, new AddRecipePresenter(viewModel));
+        AddRecipeView view = new AddRecipeView(viewModel);
+        view.setController(new AddRecipeController(interactor));
+        viewModel.addPropertyChangeListener(event -> {
+            if (viewModel.isSuccessful()) {
+                SwingUtilities.invokeLater(onRecipeSaved);
+            }
+        });
+        return view;
     }
 }
