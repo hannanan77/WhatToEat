@@ -24,13 +24,12 @@ class WeeklyMealPlanPersistenceTest {
     Path directory;
 
     @Test
-    void restoresSavedReplacementAndKeepsClearAsDraftUntilSaved() {
+    void autosavesReplacementAndKeepsClearAsDraftUntilSaved() {
         WeeklyMealPlanViewModel draft = new WeeklyMealPlanViewModel();
         WeeklyMealPlanController editor = controller(draft, directory);
         editor.addEntry(WEDNESDAY, "Dinner", "pasta");
         editor.addEntry(WEDNESDAY, "Dinner", "soup");
         assertEquals(List.of("2026-11-25 | Dinner | soup"), draft.getEntries());
-        editor.savePlan();
 
         WeeklyMealPlanViewModel reopened = new WeeklyMealPlanViewModel();
         WeeklyMealPlanController reader = controller(reopened, directory);
