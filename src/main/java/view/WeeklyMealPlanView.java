@@ -3,6 +3,8 @@ package view;
 import entity.MealPlanEntry;
 import interface_adapter.weekly_meal_plan.WeeklyMealPlanController;
 import interface_adapter.weekly_meal_plan.WeeklyMealPlanViewModel;
+import view.components.ThemeButton;
+import view.components.ThemeCard;
 
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -48,19 +50,19 @@ import java.util.Comparator;
 
 /** Weekly calendar that uses recipe IDs from the recipe collection supplied by the host. */
 public class WeeklyMealPlanView extends JPanel {
-    private static final Color CANVAS = Color.decode("#EEFBF0");
-    private static final Color MINT = Color.decode("#E6F1E8");
-    private static final Color ACTIVE = Color.decode("#BFECCA");
-    private static final Color FOREST = Color.decode("#355E43");
-    private static final Color INK = Color.decode("#26332B");
-    private static final Color OUTLINE = Color.decode("#E1E9E2");
+    private static final Color CANVAS = UiTheme.BACKGROUND;
+    private static final Color MINT = UiTheme.MINT;
+    private static final Color ACTIVE = UiTheme.SUCCESS_BACKGROUND;
+    private static final Color FOREST = UiTheme.SECONDARY;
+    private static final Color INK = UiTheme.TEXT_PRIMARY;
+    private static final Color OUTLINE = UiTheme.BORDER;
     private static final List<String> MEALS = List.of("Breakfast", "Lunch", "Dinner");
     private static final int DAYS = 7;
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("EEE", Locale.ENGLISH);
     private static final DateTimeFormatter DATE =
             DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH);
-    private static final Font PLAIN_TEXT = new Font("Plus Jakarta Sans", Font.PLAIN, 14);
-    private static final Font BOLD_TEXT = new Font("Plus Jakarta Sans", Font.BOLD, 14);
+    private static final Font PLAIN_TEXT = UiTheme.BODY_FONT;
+    private static final Font BOLD_TEXT = UiTheme.LABEL_FONT;
 
     private final JPanel calendar = new JPanel(new GridLayout(4, DAYS + 1, 8, 8));
     private final JLabel planned = label("", BOLD_TEXT, 13);
@@ -101,31 +103,49 @@ public class WeeklyMealPlanView extends JPanel {
         }
         setLayout(new BorderLayout());
         setBackground(CANVAS);
-        add(createSidebar(), BorderLayout.WEST);
+
+        JPanel page = new JPanel(new BorderLayout(0, UiTheme.SECTION_GAP));
+        page.setBackground(CANVAS);
+        page.setBorder(BorderFactory.createEmptyBorder(UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING,
+                UiTheme.PAGE_PADDING, UiTheme.PAGE_PADDING));
+        JLabel title = new JLabel("Weekly Meal Planner");
+        title.setFont(UiTheme.HEADING_FONT);
+        title.setForeground(INK);
+        page.add(title, BorderLayout.NORTH);
+
+        JPanel columns = new JPanel(new BorderLayout(UiTheme.SECTION_GAP, 0));
+        columns.setOpaque(false);
+        if (openWeek != null) {
+            JPanel weekColumn = new JPanel(new BorderLayout());
+            weekColumn.setOpaque(false);
+            weekColumn.add(createSidebar(), BorderLayout.NORTH);
+            columns.add(weekColumn, BorderLayout.WEST);
+        }
 
         JPanel content = new JPanel();
+        content.setOpaque(false);
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(BorderFactory.createEmptyBorder(24, 24, 24, 24));
-        content.setBackground(CANVAS);
-        content.add(createHeader());
-        content.add(Box.createVerticalStrut(16));
+        content.add(createActions());
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
         content.add(createWeekBar());
-        content.add(Box.createVerticalStrut(12));
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
 
-        calendar.setBackground(Color.WHITE);
-        calendar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(OUTLINE),
-                BorderFactory.createEmptyBorder(12, 12, 12, 12)));
-        calendar.setPreferredSize(new Dimension(840, 420));
+        calendar.setBackground(UiTheme.SURFACE);
+        calendar.setPreferredSize(new Dimension(750, 420));
         calendar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 420));
         calendar.setAlignmentX(LEFT_ALIGNMENT);
         content.add(calendar);
-        content.add(Box.createVerticalStrut(12));
+        content.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
         status.setAlignmentX(LEFT_ALIGNMENT);
         content.add(status);
-        content.add(Box.createVerticalGlue());
 
-        JScrollPane scroll = new JScrollPane(content);
+        JPanel calendarColumn = new JPanel(new BorderLayout());
+        calendarColumn.setOpaque(false);
+        calendarColumn.add(new ThemeCard(null, content), BorderLayout.NORTH);
+        columns.add(calendarColumn, BorderLayout.CENTER);
+        page.add(columns, BorderLayout.CENTER);
+
+        JScrollPane scroll = new JScrollPane(page);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
         viewModel.addPropertyChangeListener(event -> {
@@ -144,68 +164,54 @@ public class WeeklyMealPlanView extends JPanel {
     }
 
     private JPanel createSidebar() {
-        JPanel sidebar = new JPanel();
-        sidebar.setLayout(new BoxLayout(sidebar, BoxLayout.Y_AXIS));
-        sidebar.setBackground(Color.WHITE);
-        sidebar.setPreferredSize(new Dimension(220, 0));
-        sidebar.setBorder(BorderFactory.createEmptyBorder(24, 16, 24, 16));
-        JLabel section = label("Choose a Week", BOLD_TEXT, 14);
-        section.setOpaque(true);
-        section.setBackground(ACTIVE);
-        section.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        section.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
-        sidebar.add(section);
-        if (openWeek != null) {
-            LocalDate currentWeek = LocalDate.now().with(
-                    TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-            sidebar.add(Box.createVerticalStrut(16));
-            addWeekButton(sidebar, "This Week", currentWeek, false);
-            for (int offset = -2; offset <= 2; offset++) {
-                LocalDate monday = weekStart.plusWeeks(offset);
-                String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
-                addWeekButton(sidebar, range, monday, offset == 0);
-            }
+        JPanel weeks = new JPanel();
+        weeks.setOpaque(false);
+        weeks.setLayout(new BoxLayout(weeks, BoxLayout.Y_AXIS));
+        LocalDate currentWeek = LocalDate.now().with(
+                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        addWeekButton(weeks, "This Week", currentWeek, false);
+        for (int offset = -2; offset <= 2; offset++) {
+            LocalDate monday = weekStart.plusWeeks(offset);
+            String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
+            weeks.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+            addWeekButton(weeks, range, monday, offset == 0);
         }
-        return sidebar;
+        return new ThemeCard("Choose a Week", weeks);
     }
 
     private void addWeekButton(JPanel sidebar, String text, LocalDate monday,
                                boolean selected) {
-        JButton week = button(text, selected ? FOREST : MINT,
-                selected ? Color.WHITE : FOREST);
-        week.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        JButton week = new ThemeButton(text, selected);
+        week.setMaximumSize(new Dimension(Integer.MAX_VALUE, UiTheme.BUTTON_MIN_HEIGHT));
         week.setAlignmentX(LEFT_ALIGNMENT);
-        week.setEnabled(!selected);
-        week.addActionListener(event -> openWeek.accept(monday));
+        week.addActionListener(event -> {
+            if (!weekStart.equals(monday)) {
+                openWeek.accept(monday);
+            }
+        });
         sidebar.add(week);
-        sidebar.add(Box.createVerticalStrut(6));
     }
 
-    private JPanel createHeader() {
-        JPanel header = new JPanel(new BorderLayout(12, 0));
-        header.setOpaque(false);
-        header.setAlignmentX(LEFT_ALIGNMENT);
-        header.add(label("Weekly Meal Planner", BOLD_TEXT, 30), BorderLayout.WEST);
-
-        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+    private JPanel createActions() {
+        JPanel actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, UiTheme.SPACE_SM, 0));
+        actions.setAlignmentX(LEFT_ALIGNMENT);
         actions.setOpaque(false);
-        JButton clear = button("Clear Week", MINT, FOREST);
+        JButton clear = new ThemeButton("Clear Week", false);
         clear.addActionListener(event -> {
             if (JOptionPane.showConfirmDialog(this, "Clear all meals for this week?",
                     "Clear Week", JOptionPane.OK_CANCEL_OPTION) == JOptionPane.OK_OPTION) {
                 controller.clearPlan();
             }
         });
-        JButton save = button("Save Meal Plan", FOREST, Color.WHITE);
+        JButton save = new ThemeButton("Save Meal Plan", true);
         save.addActionListener(event -> controller.savePlan());
-        JButton export = button("Export PDF", MINT, FOREST);
+        JButton export = new ThemeButton("Export PDF", false);
         export.addActionListener(event -> exportPdf());
         actions.add(clear);
         actions.add(export);
         actions.add(save);
-        header.add(actions, BorderLayout.EAST);
-        header.setMaximumSize(new Dimension(Integer.MAX_VALUE, header.getPreferredSize().height));
-        return header;
+        actions.setMaximumSize(new Dimension(Integer.MAX_VALUE, actions.getPreferredSize().height));
+        return actions;
     }
 
     private void exportPdf() {
@@ -384,7 +390,7 @@ public class WeeklyMealPlanView extends JPanel {
                     setBackground(selected ? ACTIVE : Color.WHITE);
                     setForeground(selected ? FOREST : INK);
                     setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 12));
-                    setFont(new Font("Plus Jakarta Sans", Font.PLAIN, 15));
+                    setFont(UiTheme.BODY_LARGE_FONT);
                     setToolTipText(getText());
                     return this;
                 }
@@ -436,7 +442,7 @@ public class WeeklyMealPlanView extends JPanel {
     private static JButton button(String text, Color background, Color foreground) {
         JButton button = new JButton(text);
         button.setUI(new BasicButtonUI());
-        button.setFont(new Font("Plus Jakarta Sans", Font.BOLD, 13));
+        button.setFont(UiTheme.BUTTON_FONT);
         button.setOpaque(true);
         button.setBackground(background);
         button.setForeground(foreground);
