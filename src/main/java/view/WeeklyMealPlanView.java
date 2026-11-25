@@ -149,7 +149,7 @@ public class WeeklyMealPlanView extends JPanel {
         sidebar.setBackground(Color.WHITE);
         sidebar.setPreferredSize(new Dimension(220, 0));
         sidebar.setBorder(BorderFactory.createEmptyBorder(24, 16, 24, 16));
-        JLabel section = label("Weekly Meal Planner", BOLD_TEXT, 14);
+        JLabel section = label("Choose a Week", BOLD_TEXT, 14);
         section.setOpaque(true);
         section.setBackground(ACTIVE);
         section.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
