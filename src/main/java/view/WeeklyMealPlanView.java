@@ -53,8 +53,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.AttributedString;
 import java.time.LocalDate;
-import java.time.DayOfWeek;
-import java.time.temporal.TemporalAdjusters;
 import java.util.function.Consumer;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -82,6 +80,8 @@ public class WeeklyMealPlanView extends JPanel {
     private static final Font PLAIN_TEXT = UiTheme.BODY_FONT;
     private static final Font BOLD_TEXT = UiTheme.LABEL_FONT;
 
+    private LocalDate selectedDay;
+    private final Map<LocalDate, JButton> dayHeaders = new LinkedHashMap<>();
     private final JPanel calendar = new JPanel(new GridLayout(4, DAYS + 1, 8, 8));
     private final JLabel planned = label("", BOLD_TEXT, 13);
     private final JLabel status = label(" ", PLAIN_TEXT, 13);
@@ -196,13 +196,12 @@ public class WeeklyMealPlanView extends JPanel {
         JPanel weeks = new JPanel();
         weeks.setOpaque(false);
         weeks.setLayout(new BoxLayout(weeks, BoxLayout.Y_AXIS));
-        LocalDate currentWeek = LocalDate.now().with(
-                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-        addWeekButton(weeks, "This Week", currentWeek, false);
         for (int offset = -2; offset <= 2; offset++) {
             LocalDate monday = weekStart.plusWeeks(offset);
             String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
-            weeks.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+            if (offset > -2) {
+                weeks.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
+            }
             addWeekButton(weeks, range, monday, offset == 0);
         }
         return new ThemeCard("Choose a Week", weeks);
@@ -305,14 +304,17 @@ public class WeeklyMealPlanView extends JPanel {
     private void refresh() {
         List<MealPlanEntry> assignments = viewModel.getAssignments();
         calendar.removeAll();
+        dayHeaders.clear();
         calendar.add(heading("Meal", MINT, FOREST));
         for (int day = 0; day < DAYS; day++) {
             LocalDate date = weekStart.plusDays(day);
-            boolean today = date.equals(LocalDate.now());
-            calendar.add(heading(DAY.format(date) + " " + date.getDayOfMonth(),
-                    today ? FOREST : MINT, today ? Color.WHITE : FOREST));
+            JButton header = button(DAY.format(date) + " " + date.getDayOfMonth(), MINT, FOREST);
+            header.addActionListener(event -> selectDay(date));
+            dayHeaders.put(date, header);
+            calendar.add(header);
         }
 
+        updateDayHeaders();
         for (String meal : MEALS) {
             Map<LocalDate, String> recipeByDay = new LinkedHashMap<>();
             for (MealPlanEntry entry : assignments) {
@@ -331,6 +333,19 @@ public class WeeklyMealPlanView extends JPanel {
         status.setText(message.isEmpty() ? " " : message);
         calendar.revalidate();
         calendar.repaint();
+    }
+
+    private void selectDay(LocalDate date) {
+        selectedDay = date;
+        updateDayHeaders();
+    }
+
+    private void updateDayHeaders() {
+        dayHeaders.forEach((date, header) -> {
+            boolean selected = date.equals(selectedDay);
+            header.setBackground(selected ? FOREST : MINT);
+            header.setForeground(selected ? Color.WHITE : FOREST);
+        });
     }
 
     private JComponent createSlot(LocalDate date, String meal, String recipeId) {
@@ -359,6 +374,7 @@ public class WeeklyMealPlanView extends JPanel {
                     }
                 });
                 details.addActionListener(event -> {
+                    selectDay(date);
                     if (recipes.containsKey(recipeId)) {
                         openRecipe.accept(recipeId);
                     } else {
@@ -376,7 +392,10 @@ public class WeeklyMealPlanView extends JPanel {
         JButton choose = button(assigned ? "Replace" : "+ Add Recipe", MINT, FOREST);
         choose.getAccessibleContext().setAccessibleName(
                 choose.getText() + " for " + DAY.format(date) + " " + meal);
-        choose.addActionListener(event -> chooseRecipe(date, meal, recipeId));
+        choose.addActionListener(event -> {
+            selectDay(date);
+            chooseRecipe(date, meal, recipeId);
+        });
         slot.add(choose, assigned ? BorderLayout.SOUTH : BorderLayout.CENTER);
         return slot;
     }
