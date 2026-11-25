@@ -319,6 +319,7 @@ public class WeeklyMealPlanView extends JPanel {
                 });
                 title = details;
             }
+            title.setFont(UiTheme.SMALL_LABEL_FONT);
             title.setToolTipText(name);
             slot.add(title, BorderLayout.CENTER);
         }
