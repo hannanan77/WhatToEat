@@ -1,10 +1,6 @@
 package app;
 
-import java.awt.BorderLayout;
-
 import javax.swing.JFrame;
-import javax.swing.JPanel;
-import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
 
@@ -25,6 +21,7 @@ import use_case.recipe_library.OnlineRecipeGateway;
 import use_case.recipe_library.RecipeImageCache;
 import use_case.recipe_library.ResolveSelectedRecipeInteractor;
 import use_case.recipe_library.SearchOnlineRecipesInteractor;
+import view.AppNavigation;
 import view.recipe_library.RecipesPanel;
 
 public class Main {
@@ -81,25 +78,26 @@ public class Main {
         final NutritionAssembly nutritionAssembly = new NutritionAssembly(mainFrame);
         recipesPanel.setViewNutritionAction(nutritionAssembly::showForRecipe);
 
-        final JTabbedPane navigation = new JTabbedPane();
-        navigation.addTab("Recipes", recipesPanel);
-        navigation.addTab("Add Recipe", AddRecipePreview.createView(library, () -> {
+        final boolean mac = System.getProperty("os.name").startsWith("Mac");
+        if (mac) {
+            mainFrame.getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+            mainFrame.getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+            mainFrame.getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        }
+
+        final AppNavigation navigation = new AppNavigation(mac);
+        final String recipesPage = "Recipes";
+        navigation.addPage(recipesPage, () -> recipesPanel);
+        navigation.addPage("Add Recipe", () -> AddRecipePreview.createView(library, () -> {
             browseController.execute();
-            navigation.setSelectedComponent(recipesPanel);
+            navigation.showPage(recipesPage);
         }));
-        final JPanel mealPlanTab = new JPanel(new BorderLayout());
-        navigation.addTab("Weekly Meal Plan", mealPlanTab);
-        navigation.addChangeListener(event -> {
-            if (navigation.getSelectedComponent() == mealPlanTab
-                    && mealPlanTab.getComponentCount() == 0) {
-                mealPlanTab.add(WeeklyMealPlanPreview.createPlanner(recipeId -> {
-                    navigation.setSelectedComponent(recipesPanel);
+        navigation.addPage("Weekly Meal Plan", () ->
+                WeeklyMealPlanPreview.createPlanner(recipeId -> {
+                    navigation.showPage(recipesPage);
                     browseController.execute(() -> recipesPanel.showSavedRecipe(recipeId));
-                }), BorderLayout.CENTER);
-                mealPlanTab.revalidate();
-                mealPlanTab.repaint();
-            }
-        });
+                }));
+        navigation.showPage(recipesPage);
         mainFrame.setContentPane(navigation);
         mainFrame.setSize(1100, 720);
         mainFrame.setLocationRelativeTo(null);
