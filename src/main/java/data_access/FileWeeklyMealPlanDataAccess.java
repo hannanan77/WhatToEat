@@ -7,6 +7,7 @@ import use_case.weekly_meal_plan.WeeklyMealPlanDataAccessInterface;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -50,6 +51,10 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
 
     @Override
     public void save(MealPlan mealPlan) throws IOException {
+        write(mealPlan, true);
+    }
+
+    private void write(MealPlan mealPlan, boolean replace) throws IOException {
         Properties entries = new Properties();
         for (MealPlanEntry entry : mealPlan.getEntries()) {
             entries.setProperty(entry.getDate() + " " + entry.getMealType(), entry.getRecipeId());
@@ -61,8 +66,13 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
             try (OutputStream output = Files.newOutputStream(temporaryFile)) {
                 entries.store(output, null);
             }
-            Files.move(temporaryFile, planFile(mealPlan.getWeekStartDate()),
-                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Path target = planFile(mealPlan.getWeekStartDate());
+            if (replace) {
+                Files.move(temporaryFile, target,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.move(temporaryFile, target);
+            }
         } finally {
             Files.deleteIfExists(temporaryFile);
         }
@@ -88,6 +98,35 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
             return List.of();
         }
         return weeks;
+    }
+
+    public void moveWeek(LocalDate source, LocalDate destination) throws IOException {
+        if (source.equals(destination)) {
+            return;
+        }
+        Path target = planFile(destination);
+        if (Files.exists(target)) {
+            throw new FileAlreadyExistsException(target.toString());
+        }
+
+        MealPlan original = load(source);
+        MealPlan moved = new MealPlan(destination);
+        for (MealPlanEntry entry : original.getEntries()) {
+            long day = java.time.temporal.ChronoUnit.DAYS.between(source, entry.getDate());
+            moved.addEntry(new MealPlanEntry(destination.plusDays(day),
+                    entry.getMealType(), entry.getRecipeId()));
+        }
+        write(moved, false);
+        try {
+            delete(source);
+        } catch (IOException exception) {
+            try {
+                delete(destination);
+            } catch (IOException rollback) {
+                exception.addSuppressed(rollback);
+            }
+            throw exception;
+        }
     }
 
     public void delete(LocalDate weekStart) throws IOException {

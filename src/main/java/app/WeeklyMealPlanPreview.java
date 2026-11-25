@@ -20,6 +20,7 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import java.awt.BorderLayout;
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Path;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -110,7 +111,7 @@ public class WeeklyMealPlanPreview {
             WeekSidebar sidebar = new WeekSidebar(visible, hidden, selected, showHidden, value -> {
                 showHidden = value;
                 showWeek(selected);
-            }, this::showWeek, this::addWeek, this::hideWeek, this::deleteWeek);
+            }, this::showWeek, this::addWeek, this::hideWeek, this::deleteWeek, this::changeWeekDate);
 
             removeAll();
             if (selected != null) {
@@ -153,6 +154,28 @@ public class WeeklyMealPlanPreview {
         private void hideWeek(LocalDate monday) {
             preferences.put(monday.toString(), HIDDEN);
             showWeek(monday.equals(selected) ? null : selected);
+        }
+
+        private void changeWeekDate(LocalDate original, LocalDate target) {
+            if (original.equals(target)) {
+                return;
+            }
+            try {
+                storage.moveWeek(original, target);
+                preferences.put(original.toString(), REMOVED);
+                preferences.put(target.toString(), VISIBLE);
+                views.remove(original);
+                views.remove(target);
+                weeks.add(target);
+                showWeek(target);
+            } catch (FileAlreadyExistsException exception) {
+                JOptionPane.showMessageDialog(this,
+                        "That week already has a saved meal plan. Choose a different week.",
+                        "Change Week Dates", JOptionPane.WARNING_MESSAGE);
+            } catch (IOException exception) {
+                JOptionPane.showMessageDialog(this, "Could not move the saved meal plan.",
+                        "Change Week Dates", JOptionPane.ERROR_MESSAGE);
+            }
         }
 
         private void deleteWeek(LocalDate monday) {

@@ -198,13 +198,10 @@ public class WeeklyMealPlanView extends JPanel {
                 controller.clearPlan();
             }
         });
-        JButton save = new ThemeButton("Save Meal Plan", true);
-        save.addActionListener(event -> controller.savePlan());
         JButton export = new ThemeButton("Export PDF", false);
         export.addActionListener(event -> exportPdf());
         actions.add(clear);
         actions.add(export);
-        actions.add(save);
         actions.setMaximumSize(new Dimension(Integer.MAX_VALUE, actions.getPreferredSize().height));
         return actions;
     }

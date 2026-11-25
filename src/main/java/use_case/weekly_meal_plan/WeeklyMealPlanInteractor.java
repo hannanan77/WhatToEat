@@ -74,14 +74,18 @@ public class WeeklyMealPlanInteractor
         if (dataAccess == null) {
             presentPlan(message);
         } else {
-            persistPlan(message + " Saved.", message + " Could not save. Use Save Meal Plan to retry.");
+            persistPlan(message + " Saved.", message + " Could not save. Try again.");
         }
     }
 
     @Override
     public void clearPlan() {
         mealPlan = new MealPlan(mealPlan.getWeekStartDate());
-        presentPlan("Weekly plan cleared. Save to keep these changes.");
+        if (dataAccess == null) {
+            presentPlan("Weekly plan cleared.");
+        } else {
+            persistPlan("Weekly plan cleared and saved.", "Could not save the cleared week. Try again.");
+        }
     }
 
     @Override

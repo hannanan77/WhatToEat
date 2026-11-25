@@ -15,6 +15,7 @@ import java.time.format.TextStyle;
 import java.time.temporal.TemporalAdjusters;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import javax.swing.BorderFactory;
@@ -43,15 +44,17 @@ public final class WeekSidebar extends ThemeCard {
     public WeekSidebar(List<LocalDate> visible, List<LocalDate> hidden, LocalDate selected,
                        boolean showHidden, Consumer<Boolean> toggleHidden,
                        Consumer<LocalDate> open, Consumer<LocalDate> add,
-                       Consumer<LocalDate> hide, Consumer<LocalDate> delete) {
+                       Consumer<LocalDate> hide, Consumer<LocalDate> delete,
+                       BiConsumer<LocalDate, LocalDate> changeDate) {
         this(new JPanel(new BorderLayout(0, UiTheme.SPACE_SM)), visible, hidden, selected,
-                showHidden, toggleHidden, open, add, hide, delete);
+                showHidden, toggleHidden, open, add, hide, delete, changeDate);
     }
 
     private WeekSidebar(JPanel content, List<LocalDate> visible, List<LocalDate> hidden,
                         LocalDate selected, boolean showHidden, Consumer<Boolean> toggleHidden,
                         Consumer<LocalDate> open, Consumer<LocalDate> add,
-                        Consumer<LocalDate> hide, Consumer<LocalDate> delete) {
+                        Consumer<LocalDate> hide, Consumer<LocalDate> delete,
+                        BiConsumer<LocalDate, LocalDate> changeDate) {
         super("Choose a Week", content);
         content.setOpaque(false);
 
@@ -59,11 +62,12 @@ public final class WeekSidebar extends ThemeCard {
         rows.setOpaque(false);
         rows.setLayout(new BoxLayout(rows, BoxLayout.Y_AXIS));
         for (LocalDate date : visible) {
-            addRow(rows, date, date.equals(selected), false, open, hide, delete);
+            addRow(rows, date, date.equals(selected), false, open, hide, delete,
+                    () -> pickWeek("Change Week Dates", date, target -> changeDate.accept(date, target)));
         }
         if (showHidden) {
             for (LocalDate date : hidden) {
-                addRow(rows, date, false, true, open, add, delete);
+                addRow(rows, date, false, true, open, add, delete, () -> {});
             }
         }
         JScrollPane scroll = new JScrollPane(rows);
@@ -80,7 +84,7 @@ public final class WeekSidebar extends ThemeCard {
         JButton addWeek = new ThemeButton("+", false);
         addWeek.setToolTipText("Add a week");
         addWeek.getAccessibleContext().setAccessibleName("Add a week");
-        addWeek.addActionListener(event -> pickWeek(selected == null ? LocalDate.now() : selected, add));
+        addWeek.addActionListener(event -> pickWeek("Add a Week", selected == null ? LocalDate.now() : selected, add));
         controls.add(addWeek, BorderLayout.NORTH);
         if (!hidden.isEmpty()) {
             JCheckBox toggle = new JCheckBox("Show Hidden Weeks", showHidden);
@@ -94,7 +98,7 @@ public final class WeekSidebar extends ThemeCard {
 
     private static void addRow(JPanel rows, LocalDate monday, boolean selected, boolean hidden,
                                Consumer<LocalDate> open, Consumer<LocalDate> visibility,
-                               Consumer<LocalDate> delete) {
+                               Consumer<LocalDate> delete, Runnable changeDate) {
         String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
         JPanel row = new JPanel(new BorderLayout(0, UiTheme.SPACE_XS)) {
             @Override
@@ -105,9 +109,13 @@ public final class WeekSidebar extends ThemeCard {
         row.setOpaque(false);
         row.setAlignmentX(LEFT_ALIGNMENT);
         JButton week = new ThemeButton(range, selected);
-        week.setToolTipText(monday.getYear() + " · Drag left for week options");
+        week.setToolTipText(monday.getYear() + (selected
+                ? " · Click to change dates or drag left for options"
+                : " · Drag left for week options"));
         week.addActionListener(event -> {
-            if (!hidden && !selected) {
+            if (selected) {
+                changeDate.run();
+            } else if (!hidden) {
                 open.accept(monday);
             }
         });
@@ -158,8 +166,8 @@ public final class WeekSidebar extends ThemeCard {
         rows.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
     }
 
-    private void pickWeek(LocalDate initial, Consumer<LocalDate> add) {
-        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Add a Week",
+    private void pickWeek(String title, LocalDate initial, Consumer<LocalDate> choose) {
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), title,
                 java.awt.Dialog.ModalityType.APPLICATION_MODAL);
         dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
 
@@ -200,7 +208,7 @@ public final class WeekSidebar extends ThemeCard {
                 day.getAccessibleContext().setAccessibleName(date.toString());
                 day.addActionListener(event -> {
                     dialog.dispose();
-                    add.accept(date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
+                    choose.accept(date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)));
                 });
                 days.add(day);
             }
@@ -211,7 +219,7 @@ public final class WeekSidebar extends ThemeCard {
         year.addChangeListener(event -> render.run());
         render.run();
         picker.add(days, BorderLayout.CENTER);
-        picker.add(new JLabel("Select any day to add its Monday–Sunday week."), BorderLayout.SOUTH);
+        picker.add(new JLabel("Select any day to choose its Monday–Sunday week."), BorderLayout.SOUTH);
         dialog.setContentPane(picker);
         dialog.pack();
         dialog.setLocationRelativeTo(this);
