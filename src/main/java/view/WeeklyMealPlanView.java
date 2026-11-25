@@ -6,6 +6,7 @@ import interface_adapter.weekly_meal_plan.WeeklyMealPlanViewModel;
 import view.components.ThemeButton;
 import view.components.ThemeCard;
 
+import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -32,10 +33,18 @@ import java.awt.Dialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Insets;
+import java.awt.Rectangle;
 import java.awt.event.HierarchyEvent;
+import java.awt.font.LineBreakMeasurer;
+import java.awt.font.TextAttribute;
+import java.awt.font.TextLayout;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.text.AttributedString;
 import java.time.LocalDate;
 import java.time.DayOfWeek;
 import java.time.temporal.TemporalAdjusters;
@@ -303,11 +312,22 @@ public class WeeklyMealPlanView extends JPanel {
             String name = recipes.getOrDefault(recipeId, "Recipe unavailable");
             JComponent title;
             if (openRecipe == null) {
-                JLabel recipeName = label(name, BOLD_TEXT, 13);
-                recipeName.setHorizontalAlignment(SwingConstants.CENTER);
-                title = recipeName;
+                title = new JLabel(name) {
+                    @Override
+                    protected void paintComponent(Graphics graphics) {
+                        paintRecipeName(graphics, this, getText());
+                    }
+                };
+                title.setForeground(INK);
             } else {
                 JButton details = button(name, Color.WHITE, INK);
+                details.setUI(new BasicButtonUI() {
+                    @Override
+                    protected void paintText(Graphics graphics, AbstractButton button,
+                                             Rectangle textBounds, String clippedText) {
+                        paintRecipeName(graphics, button, button.getText());
+                    }
+                });
                 details.addActionListener(event -> {
                     if (recipes.containsKey(recipeId)) {
                         openRecipe.accept(recipeId);
@@ -329,6 +349,53 @@ public class WeeklyMealPlanView extends JPanel {
         choose.addActionListener(event -> chooseRecipe(date, meal, recipeId));
         slot.add(choose, assigned ? BorderLayout.SOUTH : BorderLayout.CENTER);
         return slot;
+    }
+
+    private static void paintRecipeName(Graphics graphics, JComponent component, String name) {
+        Insets insets = component.getInsets();
+        int horizontalPadding = Math.min(4, Math.min(insets.left, insets.right));
+        int verticalPadding = Math.min(4, Math.min(insets.top, insets.bottom));
+        int width = component.getWidth() - 2 * horizontalPadding;
+        int height = component.getHeight() - 2 * verticalPadding;
+        if (width <= 0 || height <= 0 || name.isBlank()) {
+            return;
+        }
+
+        Graphics2D draw = (Graphics2D) graphics.create();
+        try {
+            draw.setColor(component.getForeground());
+            Font font = component.getFont();
+            String text = name.replaceAll("\\s+", " ").strip();
+            for (int size = font.getSize(); size >= 1; size--) {
+                AttributedString styled = new AttributedString(text);
+                styled.addAttribute(TextAttribute.FONT, font.deriveFont((float) size));
+                LineBreakMeasurer measurer =
+                        new LineBreakMeasurer(styled.getIterator(), draw.getFontRenderContext());
+                List<TextLayout> lines = new ArrayList<>();
+                float textHeight = 0;
+                while (measurer.getPosition() < text.length()) {
+                    TextLayout line = measurer.nextLayout(width);
+                    lines.add(line);
+                    textHeight += line.getAscent() + line.getDescent() + line.getLeading();
+                }
+
+                if (textHeight <= height || size == 1) {
+                    float scale = Math.min(1f, height / textHeight);
+                    draw.translate(horizontalPadding, verticalPadding + (height - textHeight * scale) / 2);
+                    draw.scale(scale, scale);
+                    float baseline = 0;
+                    for (TextLayout line : lines) {
+                        baseline += line.getAscent();
+                        line.draw(draw, (width / scale - line.getAdvance()) / 2, baseline);
+                        baseline += line.getDescent() + line.getLeading();
+                    }
+                    return;
+                }
+            }
+        }
+        finally {
+            draw.dispose();
+        }
     }
 
     private void chooseRecipe(LocalDate date, String meal, String currentRecipeId) {
