@@ -313,7 +313,10 @@ public class RecipesPanel extends JPanel {
         searchOnline.addActionListener(event -> onlineSearchAction.run());
 
         JButton collection = actionButton("My Collection", "recipes-show-collection", false);
-        collection.addActionListener(event -> showCollectionAction.run());
+        collection.addActionListener(event -> {
+            searchField.setText("");
+            showCollectionAction.run();
+        });
 
         statusLabel.setName("recipes-status");
         statusLabel.setFont(UiTheme.CAPTION_FONT);
