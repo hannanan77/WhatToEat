@@ -991,8 +991,12 @@ public class AddRecipeView extends JPanel {
             this.pane = pane;
             timer = new Timer(15, event -> tick());
             timer.setCoalesce(true);
-            pane.addMouseWheelListener(this);
             pane.setWheelScrollingEnabled(false);
+            // Aqua can consume wheel events even with Swing wheel scrolling disabled.
+            for (MouseWheelListener listener : pane.getMouseWheelListeners()) {
+                pane.removeMouseWheelListener(listener);
+            }
+            pane.addMouseWheelListener(this);
             pane.getVerticalScrollBar().addAdjustmentListener(event -> {
                 if (!adjusting) {
                     stop();
