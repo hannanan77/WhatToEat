@@ -1,5 +1,6 @@
 package app;
 
+import data_access.FileRecipeLibraryDataAccess;
 import data_access.FileWeeklyMealPlanDataAccess;
 import data_access.SavedRecipeChoices;
 import entity.MealPlan;
@@ -21,30 +22,7 @@ public class WeeklyMealPlanPreview {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
-            LocalDate weekStartDate = LocalDate.now().with(
-                    TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
-
-            Path appData = Path.of(System.getProperty("user.home"), ".whattoeat");
-            SavedRecipeChoices collection = new SavedRecipeChoices(appData.resolve("recipes.json"));
-            MealPlan mealPlan = new MealPlan(weekStartDate);
-
-            WeeklyMealPlanViewModel viewModel =
-                    new WeeklyMealPlanViewModel();
-
-            WeeklyMealPlanPresenter presenter =
-                    new WeeklyMealPlanPresenter(viewModel);
-
-            WeeklyMealPlanInteractor interactor =
-                    new WeeklyMealPlanInteractor(mealPlan, presenter,
-                            new FileWeeklyMealPlanDataAccess(
-                                    appData.resolve("meal-plans")));
-
-            WeeklyMealPlanController controller =
-                    new WeeklyMealPlanController(interactor);
-
-            WeeklyMealPlanView view = new WeeklyMealPlanView(
-                    controller, viewModel, weekStartDate, collection::load);
-            controller.loadPlan();
+            WeeklyMealPlanView view = createView();
 
             JFrame window = new JFrame("WhatToEat - Weekly Meal Plan");
             window.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -53,5 +31,33 @@ public class WeeklyMealPlanPreview {
             window.setLocationRelativeTo(null);
             window.setVisible(true);
         });
+    }
+
+    static WeeklyMealPlanView createView() {
+        LocalDate weekStartDate = LocalDate.now().with(
+                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+
+        Path recipeFile = FileRecipeLibraryDataAccess.defaultFile();
+        SavedRecipeChoices collection = new SavedRecipeChoices(recipeFile);
+        MealPlan mealPlan = new MealPlan(weekStartDate);
+
+        WeeklyMealPlanViewModel viewModel =
+                new WeeklyMealPlanViewModel();
+
+        WeeklyMealPlanPresenter presenter =
+                new WeeklyMealPlanPresenter(viewModel);
+
+        WeeklyMealPlanInteractor interactor =
+                new WeeklyMealPlanInteractor(mealPlan, presenter,
+                        new FileWeeklyMealPlanDataAccess(
+                                recipeFile.resolveSibling("meal-plans")));
+
+        WeeklyMealPlanController controller =
+                new WeeklyMealPlanController(interactor);
+
+        WeeklyMealPlanView view = new WeeklyMealPlanView(
+                controller, viewModel, weekStartDate, collection::load);
+        controller.loadPlan();
+        return view;
     }
 }

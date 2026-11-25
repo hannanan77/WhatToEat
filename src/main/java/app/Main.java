@@ -1,6 +1,9 @@
 package app;
 
+import java.awt.BorderLayout;
+
 import javax.swing.JFrame;
+import javax.swing.JPanel;
 import javax.swing.JTabbedPane;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
@@ -84,6 +87,16 @@ public class Main {
             browseController.execute();
             navigation.setSelectedComponent(recipesPanel);
         }));
+        final JPanel mealPlanTab = new JPanel(new BorderLayout());
+        navigation.addTab("Weekly Meal Plan", mealPlanTab);
+        navigation.addChangeListener(event -> {
+            if (navigation.getSelectedComponent() == mealPlanTab
+                    && mealPlanTab.getComponentCount() == 0) {
+                mealPlanTab.add(WeeklyMealPlanPreview.createView(), BorderLayout.CENTER);
+                mealPlanTab.revalidate();
+                mealPlanTab.repaint();
+            }
+        });
         mainFrame.setContentPane(navigation);
         mainFrame.setSize(1100, 720);
         mainFrame.setLocationRelativeTo(null);
