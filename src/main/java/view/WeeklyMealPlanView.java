@@ -6,6 +6,7 @@ import interface_adapter.weekly_meal_plan.WeeklyMealPlanViewModel;
 import view.components.ThemeButton;
 import view.components.ThemeCard;
 
+import javax.imageio.ImageIO;
 import javax.swing.AbstractButton;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
@@ -24,6 +25,7 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.awt.BorderLayout;
@@ -37,11 +39,16 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Insets;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.event.HierarchyEvent;
 import java.awt.font.LineBreakMeasurer;
 import java.awt.font.TextAttribute;
 import java.awt.font.TextLayout;
+import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.AttributedString;
@@ -51,10 +58,12 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.function.Consumer;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Comparator;
 
 /** Weekly calendar that uses recipe IDs from the recipe collection supplied by the host. */
@@ -80,6 +89,9 @@ public class WeeklyMealPlanView extends JPanel {
     private final WeeklyMealPlanViewModel viewModel;
     private final LocalDate weekStart;
     private final RecipeCollection collection;
+    private final RecipeCollection imageCollection;
+    private Map<String, String> imageLocations = Map.of();
+    private final Map<String, Optional<BufferedImage>> photos = new HashMap<>();
     private final Consumer<LocalDate> openWeek;
     private final Consumer<String> openRecipe;
     private Map<String, String> recipes = Map.of();
@@ -99,6 +111,14 @@ public class WeeklyMealPlanView extends JPanel {
                               WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
                               RecipeCollection collection, Consumer<LocalDate> openWeek,
                               Consumer<String> openRecipe) {
+        this(controller, viewModel, weekStart, collection, openWeek, openRecipe, Map::of);
+    }
+
+    public WeeklyMealPlanView(WeeklyMealPlanController controller,
+                              WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
+                              RecipeCollection collection, Consumer<LocalDate> openWeek,
+                              Consumer<String> openRecipe, RecipeCollection imageCollection) {
+        this.imageCollection = imageCollection;
         this.openWeek = openWeek;
         this.openRecipe = openRecipe;
         this.controller = controller;
@@ -106,7 +126,7 @@ public class WeeklyMealPlanView extends JPanel {
         this.weekStart = weekStart;
         this.collection = collection;
         try {
-            recipes = Map.copyOf(collection.load());
+            loadCollection();
         } catch (IOException exception) {
             // The picker retries when opened and displays the read error there.
         }
@@ -265,10 +285,20 @@ public class WeeklyMealPlanView extends JPanel {
 
     public void refreshRecipeNames() {
         try {
-            recipes = Map.copyOf(collection.load());
+            loadCollection();
             refresh();
         } catch (IOException exception) {
             // The picker retries and reports collection read failures.
+        }
+    }
+
+    private void loadCollection() throws IOException {
+        recipes = Map.copyOf(collection.load());
+        try {
+            imageLocations = Map.copyOf(imageCollection.load());
+        }
+        catch (IOException exception) {
+            imageLocations = Map.of();
         }
     }
 
@@ -315,7 +345,7 @@ public class WeeklyMealPlanView extends JPanel {
                 title = new JLabel(name) {
                     @Override
                     protected void paintComponent(Graphics graphics) {
-                        paintRecipeName(graphics, this, getText());
+                        paintRecipeName(graphics, this, getText(), recipePhoto(recipeId));
                     }
                 };
                 title.setForeground(INK);
@@ -325,7 +355,7 @@ public class WeeklyMealPlanView extends JPanel {
                     @Override
                     protected void paintText(Graphics graphics, AbstractButton button,
                                              Rectangle textBounds, String clippedText) {
-                        paintRecipeName(graphics, button, button.getText());
+                        paintRecipeName(graphics, button, button.getText(), recipePhoto(recipeId));
                     }
                 });
                 details.addActionListener(event -> {
@@ -351,7 +381,111 @@ public class WeeklyMealPlanView extends JPanel {
         return slot;
     }
 
-    private static void paintRecipeName(Graphics graphics, JComponent component, String name) {
+    private BufferedImage recipePhoto(String recipeId) {
+        String location = imageLocations.get(recipeId);
+        if (location == null) {
+            return null;
+        }
+        if (!photos.containsKey(location)) {
+            photos.put(location, Optional.empty());
+            new SwingWorker<BufferedImage, Void>() {
+                @Override
+                protected BufferedImage doInBackground() {
+                    return readPhoto(location);
+                }
+
+                @Override
+                protected void done() {
+                    try {
+                        BufferedImage photo = get();
+                        if (photo != null) {
+                            photos.put(location, Optional.of(photo));
+                            calendar.repaint();
+                        }
+                    }
+                    catch (InterruptedException exception) {
+                        Thread.currentThread().interrupt();
+                    }
+                    catch (java.util.concurrent.ExecutionException exception) {
+                        // A failed photo leaves the plain-text card available.
+                    }
+                }
+            }.execute();
+        }
+        return photos.get(location).orElse(null);
+    }
+
+    private static BufferedImage readPhoto(String location) {
+        try {
+            BufferedImage image;
+            if (location.regionMatches(true, 0, "file:", 0, 5)) {
+                image = ImageIO.read(Path.of(URI.create(location)).toFile());
+            }
+            else if (location.startsWith("https://") || location.startsWith("http://")) {
+                URLConnection connection = URI.create(location).toURL().openConnection();
+                connection.setConnectTimeout(4000);
+                connection.setReadTimeout(4000);
+                try (InputStream stream = connection.getInputStream()) {
+                    image = ImageIO.read(stream);
+                }
+            }
+            else {
+                image = ImageIO.read(Path.of(location).toFile());
+            }
+            if (image == null || Math.max(image.getWidth(), image.getHeight()) <= 384) {
+                return image;
+            }
+            double scale = 384.0 / Math.max(image.getWidth(), image.getHeight());
+            int width = Math.max(1, (int) Math.round(image.getWidth() * scale));
+            int height = Math.max(1, (int) Math.round(image.getHeight() * scale));
+            BufferedImage thumbnail = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D draw = thumbnail.createGraphics();
+            try {
+                draw.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                draw.drawImage(image, 0, 0, width, height, null);
+            }
+            finally {
+                draw.dispose();
+            }
+            return thumbnail;
+        }
+        catch (IOException | IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    private static Color paintPhoto(Graphics2D draw, JComponent component, BufferedImage photo) {
+        int width = component.getWidth();
+        int height = component.getHeight();
+        double scale = Math.max((double) width / photo.getWidth(), (double) height / photo.getHeight());
+        int cropWidth = Math.max(1, Math.min(photo.getWidth(), (int) Math.round(width / scale)));
+        int cropHeight = Math.max(1, Math.min(photo.getHeight(), (int) Math.round(height / scale)));
+        int left = (photo.getWidth() - cropWidth) / 2;
+        int top = (photo.getHeight() - cropHeight) / 2;
+        draw.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        draw.drawImage(photo, 0, 0, width, height,
+                left, top, left + cropWidth, top + cropHeight, UiTheme.SURFACE, null);
+
+        double brightness = 0;
+        for (int row = 0; row < 5; row++) {
+            for (int column = 0; column < 5; column++) {
+                int sample = photo.getRGB(left + (2 * column + 1) * cropWidth / 10,
+                        top + (2 * row + 1) * cropHeight / 10);
+                double alpha = (sample >>> 24) / 255.0;
+                double luminance = 0.2126 * ((sample >> 16) & 255)
+                        + 0.7152 * ((sample >> 8) & 255) + 0.0722 * (sample & 255);
+                brightness += alpha * luminance + (1 - alpha) * 255;
+            }
+        }
+        boolean light = brightness / 25 >= 145;
+        draw.setColor(light ? new Color(255, 255, 255, 140) : new Color(0, 0, 0, 150));
+        draw.fillRect(0, 0, width, height);
+        return light ? Color.BLACK : Color.WHITE;
+    }
+
+    private static void paintRecipeName(Graphics graphics, JComponent component, String name,
+                                        BufferedImage photo) {
         Insets insets = component.getInsets();
         int horizontalPadding = Math.min(4, Math.min(insets.left, insets.right));
         int verticalPadding = Math.min(4, Math.min(insets.top, insets.bottom));
@@ -363,7 +497,9 @@ public class WeeklyMealPlanView extends JPanel {
 
         Graphics2D draw = (Graphics2D) graphics.create();
         try {
-            draw.setColor(component.getForeground());
+            Color textColor = photo == null ? component.getForeground()
+                    : paintPhoto(draw, component, photo);
+            draw.setColor(textColor);
             Font font = component.getFont();
             String text = name.replaceAll("\\s+", " ").strip();
             for (int size = font.getSize(); size >= 1; size--) {
@@ -401,7 +537,7 @@ public class WeeklyMealPlanView extends JPanel {
     private void chooseRecipe(LocalDate date, String meal, String currentRecipeId) {
         String message;
         try {
-            recipes = Map.copyOf(collection.load());
+            loadCollection();
             refresh();
             message = recipes.isEmpty()
                     ? "Your collection is empty. Save or import a recipe first."

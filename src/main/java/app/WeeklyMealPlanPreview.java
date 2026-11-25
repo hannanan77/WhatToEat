@@ -82,7 +82,7 @@ public class WeeklyMealPlanPreview {
                 new WeeklyMealPlanController(interactor);
 
         WeeklyMealPlanView view = new WeeklyMealPlanView(
-                controller, viewModel, weekStartDate, collection::load, openWeek, openRecipe);
+                controller, viewModel, weekStartDate, collection::load, openWeek, openRecipe, collection::loadImages);
         controller.loadPlan();
         return view;
     }
