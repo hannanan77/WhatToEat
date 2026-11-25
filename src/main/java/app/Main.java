@@ -92,7 +92,10 @@ public class Main {
         navigation.addChangeListener(event -> {
             if (navigation.getSelectedComponent() == mealPlanTab
                     && mealPlanTab.getComponentCount() == 0) {
-                mealPlanTab.add(WeeklyMealPlanPreview.createPlanner(null), BorderLayout.CENTER);
+                mealPlanTab.add(WeeklyMealPlanPreview.createPlanner(recipeId -> {
+                    navigation.setSelectedComponent(recipesPanel);
+                    browseController.execute(() -> recipesPanel.showSavedRecipe(recipeId));
+                }), BorderLayout.CENTER);
                 mealPlanTab.revalidate();
                 mealPlanTab.repaint();
             }

@@ -30,6 +30,7 @@ import java.awt.Dialog;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.event.HierarchyEvent;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -132,6 +133,11 @@ public class WeeklyMealPlanView extends JPanel {
                 refresh();
             } else {
                 SwingUtilities.invokeLater(this::refresh);
+            }
+        });
+        addHierarchyListener(event -> {
+            if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && isShowing()) {
+                refreshRecipeNames();
             }
         });
         refresh();
@@ -291,7 +297,7 @@ public class WeeklyMealPlanView extends JPanel {
         slot.setBorder(BorderFactory.createLineBorder(OUTLINE));
         boolean assigned = recipeId != null;
         if (assigned) {
-            String name = recipes.getOrDefault(recipeId, recipeId);
+            String name = recipes.getOrDefault(recipeId, "Recipe unavailable");
             JComponent title;
             if (openRecipe == null) {
                 JLabel recipeName = label(name, BOLD_TEXT, 13);
@@ -299,7 +305,15 @@ public class WeeklyMealPlanView extends JPanel {
                 title = recipeName;
             } else {
                 JButton details = button(name, Color.WHITE, INK);
-                details.addActionListener(event -> openRecipe.accept(recipeId));
+                details.addActionListener(event -> {
+                    if (recipes.containsKey(recipeId)) {
+                        openRecipe.accept(recipeId);
+                    } else {
+                        JOptionPane.showMessageDialog(this,
+                                "This recipe is no longer in My Collection. Use Replace to choose a saved recipe.",
+                                "Recipe unavailable", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                });
                 title = details;
             }
             title.setToolTipText(name);

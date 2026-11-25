@@ -424,6 +424,16 @@ public class RecipesPanel extends JPanel {
         return message;
     }
 
+    /** Opens a recipe after the saved collection has been loaded. */
+    public void showSavedRecipe(String recipeId) {
+        searchField.setText("");
+        if (findById(recipeId) == null) {
+            setStatusMessage("This planned recipe is no longer in My Collection.");
+            return;
+        }
+        selectRecipe(recipeId);
+    }
+
     private void selectRecipe(String recipeId) {
         selectedId = recipeId;
         frameSelection = false;
