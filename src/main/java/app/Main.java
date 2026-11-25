@@ -1,5 +1,7 @@
 package app;
 
+import java.util.prefs.Preferences;
+
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
 import javax.swing.WindowConstants;
@@ -67,7 +69,8 @@ public class Main {
                 new ResolveSelectedRecipeController(
                         new ResolveSelectedRecipeInteractor(library, gateway));
 
-        final RecipesPanel recipesPanel = new RecipesPanel();
+        final RecipesPanel recipesPanel = new RecipesPanel(
+                Preferences.userNodeForPackage(Main.class).node("hidden-recipes"));
         recipesPanel.bind(viewModel);
         recipesPanel.setOnlineSearchAction(
                 () -> searchController.execute(recipesPanel.getSearchText()));

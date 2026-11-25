@@ -15,11 +15,13 @@ import java.awt.event.MouseEvent;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 import interface_adapter.recipe_library.RecipeDisplayData;
 import view.UiTheme;
+import view.components.ThemeButton;
 
 /**
  * One recipe summary in the browsing list.
@@ -32,6 +34,10 @@ final class RecipeCard extends JPanel {
     private boolean hovered;
 
     RecipeCard(RecipeDisplayData recipe, Runnable onSelect) {
+        this(recipe, onSelect, null, null);
+    }
+
+    RecipeCard(RecipeDisplayData recipe, Runnable onSelect, String actionLabel, Runnable onAction) {
         this(recipe.getId(), false);
         JPanel text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
@@ -47,7 +53,14 @@ final class RecipeCard extends JPanel {
                 UiTheme.LABEL_FONT, UiTheme.SECONDARY,
                 "recipe-card-servings-" + recipeId));
         add(text, BorderLayout.CENTER);
-        installPointer(this, pointer(onSelect));
+        JButton action = actionLabel == null ? null : new ThemeButton(actionLabel, false);
+        installPointer(this, pointer(onSelect, action));
+        if (action != null) {
+            setToolTipText("Drag left or right-click for recipe options");
+            action.setVisible(false);
+            action.addActionListener(event -> onAction.run());
+            add(action, BorderLayout.EAST);
+        }
     }
 
     /** A card outline with empty bars and no recipe content. */
@@ -62,7 +75,7 @@ final class RecipeCard extends JPanel {
         text.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
         text.add(bar(72, 10, UiTheme.SECONDARY));
         card.add(text, BorderLayout.CENTER);
-        card.installPointer(card, card.pointer(onSelect));
+        card.installPointer(card, card.pointer(onSelect, null));
         return card;
     }
 
@@ -80,8 +93,31 @@ final class RecipeCard extends JPanel {
         refreshColors();
     }
 
-    private MouseAdapter pointer(Runnable onSelect) {
+    private MouseAdapter pointer(Runnable onSelect, JButton action) {
         return new MouseAdapter() {
+            private int pressX;
+            private int pressY;
+
+            @Override
+            public void mousePressed(MouseEvent event) {
+                pressX = event.getXOnScreen();
+                pressY = event.getYOnScreen();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                if (action == null || event.getButton() != MouseEvent.BUTTON1) {
+                    return;
+                }
+                int dx = event.getXOnScreen() - pressX;
+                int dy = event.getYOnScreen() - pressY;
+                if (Math.abs(dx) >= 36 && Math.abs(dx) > Math.abs(dy)) {
+                    action.setVisible(dx < 0);
+                    revalidate();
+                    repaint();
+                }
+            }
+
             @Override
             public void mouseEntered(MouseEvent event) {
                 hovered = true;
@@ -101,7 +137,13 @@ final class RecipeCard extends JPanel {
 
             @Override
             public void mouseClicked(MouseEvent event) {
-                onSelect.run();
+                if (action != null && event.getButton() == MouseEvent.BUTTON3) {
+                    action.setVisible(!action.isVisible());
+                    revalidate();
+                    repaint();
+                } else if (event.getButton() != MouseEvent.BUTTON3) {
+                    onSelect.run();
+                }
             }
         };
     }
