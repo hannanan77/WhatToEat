@@ -34,6 +34,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.DayOfWeek;
+import java.time.temporal.TemporalAdjusters;
+import java.util.function.Consumer;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -65,6 +68,8 @@ public class WeeklyMealPlanView extends JPanel {
     private final WeeklyMealPlanViewModel viewModel;
     private final LocalDate weekStart;
     private final RecipeCollection collection;
+    private final Consumer<LocalDate> openWeek;
+    private final Consumer<String> openRecipe;
     private Map<String, String> recipes = Map.of();
 
     @FunctionalInterface
@@ -75,6 +80,15 @@ public class WeeklyMealPlanView extends JPanel {
     public WeeklyMealPlanView(WeeklyMealPlanController controller,
                               WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
                               RecipeCollection collection) {
+        this(controller, viewModel, weekStart, collection, null, null);
+    }
+
+    public WeeklyMealPlanView(WeeklyMealPlanController controller,
+                              WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
+                              RecipeCollection collection, Consumer<LocalDate> openWeek,
+                              Consumer<String> openRecipe) {
+        this.openWeek = openWeek;
+        this.openRecipe = openRecipe;
         this.controller = controller;
         this.viewModel = viewModel;
         this.weekStart = weekStart;
@@ -138,7 +152,30 @@ public class WeeklyMealPlanView extends JPanel {
         section.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         section.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         sidebar.add(section);
+        if (openWeek != null) {
+            LocalDate currentWeek = LocalDate.now().with(
+                    TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+            sidebar.add(Box.createVerticalStrut(16));
+            addWeekButton(sidebar, "This Week", currentWeek, false);
+            for (int offset = -2; offset <= 2; offset++) {
+                LocalDate monday = weekStart.plusWeeks(offset);
+                String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
+                addWeekButton(sidebar, range, monday, offset == 0);
+            }
+        }
         return sidebar;
+    }
+
+    private void addWeekButton(JPanel sidebar, String text, LocalDate monday,
+                               boolean selected) {
+        JButton week = button(text, selected ? FOREST : MINT,
+                selected ? Color.WHITE : FOREST);
+        week.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        week.setAlignmentX(LEFT_ALIGNMENT);
+        week.setEnabled(!selected);
+        week.addActionListener(event -> openWeek.accept(monday));
+        sidebar.add(week);
+        sidebar.add(Box.createVerticalStrut(6));
     }
 
     private JPanel createHeader() {
@@ -208,6 +245,15 @@ public class WeeklyMealPlanView extends JPanel {
         return bar;
     }
 
+    public void refreshRecipeNames() {
+        try {
+            recipes = Map.copyOf(collection.load());
+            refresh();
+        } catch (IOException exception) {
+            // The picker retries and reports collection read failures.
+        }
+    }
+
     private void refresh() {
         List<MealPlanEntry> assignments = viewModel.getAssignments();
         calendar.removeAll();
@@ -246,8 +292,16 @@ public class WeeklyMealPlanView extends JPanel {
         boolean assigned = recipeId != null;
         if (assigned) {
             String name = recipes.getOrDefault(recipeId, recipeId);
-            JLabel title = label(name, BOLD_TEXT, 13);
-            title.setHorizontalAlignment(SwingConstants.CENTER);
+            JComponent title;
+            if (openRecipe == null) {
+                JLabel recipeName = label(name, BOLD_TEXT, 13);
+                recipeName.setHorizontalAlignment(SwingConstants.CENTER);
+                title = recipeName;
+            } else {
+                JButton details = button(name, Color.WHITE, INK);
+                details.addActionListener(event -> openRecipe.accept(recipeId));
+                title = details;
+            }
             title.setToolTipText(name);
             slot.add(title, BorderLayout.CENTER);
         }
