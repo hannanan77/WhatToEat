@@ -13,7 +13,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.stream.Stream;
 
 /** Persists a separate plan for each week in a local directory. */
 public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInterface {
@@ -63,6 +66,32 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
         } finally {
             Files.deleteIfExists(temporaryFile);
         }
+    }
+
+    public List<LocalDate> savedWeeks() throws IOException {
+        List<LocalDate> weeks = new ArrayList<>();
+        try (Stream<Path> files = Files.list(directory)) {
+            files.filter(Files::isRegularFile).forEach(file -> {
+                String name = file.getFileName().toString();
+                if (name.endsWith(".properties")) {
+                    try {
+                        LocalDate date = LocalDate.parse(name.substring(0, name.length() - 11));
+                        if (date.getDayOfWeek() == java.time.DayOfWeek.MONDAY) {
+                            weeks.add(date);
+                        }
+                    } catch (DateTimeParseException exception) {
+                        // Files with unrelated names are not weekly plans.
+                    }
+                }
+            });
+        } catch (NoSuchFileException exception) {
+            return List.of();
+        }
+        return weeks;
+    }
+
+    public void delete(LocalDate weekStart) throws IOException {
+        Files.deleteIfExists(planFile(weekStart));
     }
 
     private Path planFile(LocalDate weekStartDate) {

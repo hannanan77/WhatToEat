@@ -92,7 +92,8 @@ public class WeeklyMealPlanView extends JPanel {
     private final RecipeCollection imageCollection;
     private Map<String, String> imageLocations = Map.of();
     private final Map<String, Optional<BufferedImage>> photos = new HashMap<>();
-    private final Consumer<LocalDate> openWeek;
+    private final JPanel columns = new JPanel(new BorderLayout(UiTheme.SECTION_GAP, 0));
+    private final JPanel weekColumn = new JPanel(new BorderLayout());
     private final Consumer<String> openRecipe;
     private Map<String, String> recipes = Map.of();
 
@@ -104,22 +105,14 @@ public class WeeklyMealPlanView extends JPanel {
     public WeeklyMealPlanView(WeeklyMealPlanController controller,
                               WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
                               RecipeCollection collection) {
-        this(controller, viewModel, weekStart, collection, null, null);
+        this(controller, viewModel, weekStart, collection, null, Map::of);
     }
 
     public WeeklyMealPlanView(WeeklyMealPlanController controller,
                               WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
-                              RecipeCollection collection, Consumer<LocalDate> openWeek,
-                              Consumer<String> openRecipe) {
-        this(controller, viewModel, weekStart, collection, openWeek, openRecipe, Map::of);
-    }
-
-    public WeeklyMealPlanView(WeeklyMealPlanController controller,
-                              WeeklyMealPlanViewModel viewModel, LocalDate weekStart,
-                              RecipeCollection collection, Consumer<LocalDate> openWeek,
-                              Consumer<String> openRecipe, RecipeCollection imageCollection) {
+                              RecipeCollection collection, Consumer<String> openRecipe,
+                              RecipeCollection imageCollection) {
         this.imageCollection = imageCollection;
-        this.openWeek = openWeek;
         this.openRecipe = openRecipe;
         this.controller = controller;
         this.viewModel = viewModel;
@@ -142,14 +135,8 @@ public class WeeklyMealPlanView extends JPanel {
         title.setForeground(INK);
         page.add(title, BorderLayout.NORTH);
 
-        JPanel columns = new JPanel(new BorderLayout(UiTheme.SECTION_GAP, 0));
         columns.setOpaque(false);
-        if (openWeek != null) {
-            JPanel weekColumn = new JPanel(new BorderLayout());
-            weekColumn.setOpaque(false);
-            weekColumn.add(createSidebar(), BorderLayout.NORTH);
-            columns.add(weekColumn, BorderLayout.WEST);
-        }
+        weekColumn.setOpaque(false);
 
         JPanel content = new JPanel();
         content.setOpaque(false);
@@ -192,32 +179,12 @@ public class WeeklyMealPlanView extends JPanel {
         refresh();
     }
 
-    private JPanel createSidebar() {
-        JPanel weeks = new JPanel();
-        weeks.setOpaque(false);
-        weeks.setLayout(new BoxLayout(weeks, BoxLayout.Y_AXIS));
-        for (int offset = -2; offset <= 2; offset++) {
-            LocalDate monday = weekStart.plusWeeks(offset);
-            String range = DATE.format(monday) + " – " + DATE.format(monday.plusDays(6));
-            if (offset > -2) {
-                weeks.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
-            }
-            addWeekButton(weeks, range, monday, offset == 0);
-        }
-        return new ThemeCard("Choose a Week", weeks);
-    }
-
-    private void addWeekButton(JPanel sidebar, String text, LocalDate monday,
-                               boolean selected) {
-        JButton week = new ThemeButton(text, selected);
-        week.setMaximumSize(new Dimension(Integer.MAX_VALUE, UiTheme.BUTTON_MIN_HEIGHT));
-        week.setAlignmentX(LEFT_ALIGNMENT);
-        week.addActionListener(event -> {
-            if (!weekStart.equals(monday)) {
-                openWeek.accept(monday);
-            }
-        });
-        sidebar.add(week);
+    public void setWeekSidebar(JComponent sidebar) {
+        weekColumn.removeAll();
+        weekColumn.add(sidebar, BorderLayout.NORTH);
+        columns.add(weekColumn, BorderLayout.WEST);
+        columns.revalidate();
+        columns.repaint();
     }
 
     private JPanel createActions() {
