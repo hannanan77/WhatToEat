@@ -41,9 +41,7 @@ public class AddRecipeView extends JPanel {
     private final JComboBox<String> unitComboBox = new JComboBox<>(
             new String[]{"g", "kg", "mg", "ml", "L", "tsp", "tbsp", "cup", "piece", "slice", "clove", "can", "bunch", "pinch"});
     private final JCheckBox unknownQuantityCheckBox = new ThemeCheckBox("Quantity unknown");
-    private static final String SAVE_RECIPE_LABEL = "Save Recipe to My Collection";
-
-    private final JButton saveButton = new ThemeButton(SAVE_RECIPE_LABEL, true);
+    private final JButton saveButton = new ThemeButton("Save Recipe", true);
     private final JTextArea statusLabel = new JTextArea("Fill in your recipe details.");
     private final ImagePreview imagePreview = new ImagePreview();
     private final DefaultTableModel ingredientTableModel = new DefaultTableModel(
@@ -678,7 +676,7 @@ public class AddRecipeView extends JPanel {
                 entry.getKey().setEnabled(entry.getValue());
             }
             enabledBeforeSave.clear();
-            saveButton.setText(SAVE_RECIPE_LABEL);
+            saveButton.setText("Save Recipe");
         }
         saveButton.setEnabled(controller != null && !saving && !imageLoading);
     }
@@ -991,12 +989,8 @@ public class AddRecipeView extends JPanel {
             this.pane = pane;
             timer = new Timer(15, event -> tick());
             timer.setCoalesce(true);
-            pane.setWheelScrollingEnabled(false);
-            // Aqua can consume wheel events even with Swing wheel scrolling disabled.
-            for (MouseWheelListener listener : pane.getMouseWheelListeners()) {
-                pane.removeMouseWheelListener(listener);
-            }
             pane.addMouseWheelListener(this);
+            pane.setWheelScrollingEnabled(false);
             pane.getVerticalScrollBar().addAdjustmentListener(event -> {
                 if (!adjusting) {
                     stop();

@@ -13,12 +13,9 @@ import java.io.File;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.UUID;
-import java.util.prefs.Preferences;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -28,8 +25,6 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JOptionPane;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -69,14 +64,11 @@ import view.components.UiComponents;
 public class RecipesPanel extends JPanel {
 
     private final JTextField searchField = new JTextField();
-    private final Preferences hiddenRecipes;
-    private final JCheckBox showHidden = new JCheckBox("Show Hidden Recipes");
     private final JLabel statusLabel = new JLabel(" ");
     private Runnable onlineSearchAction = () -> {
     };
     private Runnable showCollectionAction = () -> {
     };
-    private Consumer<String> deleteAction;
     private Consumer<String> importAction = externalId -> {
     };
     private Consumer<Recipe> recipeSelectionAction = recipe -> {
@@ -103,11 +95,6 @@ public class RecipesPanel extends JPanel {
     private int selectionRequest;
 
     public RecipesPanel() {
-        this(null);
-    }
-
-    public RecipesPanel(Preferences hiddenRecipes) {
-        this.hiddenRecipes = hiddenRecipes;
         setName("recipes-panel");
         setBackground(EditorialTheme.BACKGROUND);
         setOpaque(true);
@@ -190,17 +177,6 @@ public class RecipesPanel extends JPanel {
 
     public void setShowCollectionAction(Runnable action) {
         showCollectionAction = action == null ? () -> { } : action;
-    }
-
-    public void setDeleteAction(Consumer<String> action) {
-        deleteAction = action;
-        rebuildCards();
-    }
-
-    public void forgetHiddenRecipe(String recipeId) {
-        if (hiddenRecipes != null) {
-            hiddenRecipes.remove(hiddenKey(recipeId));
-        }
     }
 
     public void setImportAction(Consumer<String> action) {
@@ -337,10 +313,7 @@ public class RecipesPanel extends JPanel {
         searchOnline.addActionListener(event -> onlineSearchAction.run());
 
         JButton collection = actionButton("My Collection", "recipes-show-collection", false);
-        collection.addActionListener(event -> {
-            searchField.setText("");
-            showCollectionAction.run();
-        });
+        collection.addActionListener(event -> showCollectionAction.run());
 
         statusLabel.setName("recipes-status");
         statusLabel.setFont(UiTheme.CAPTION_FONT);
@@ -350,15 +323,6 @@ public class RecipesPanel extends JPanel {
         heading.add(searchOnline);
         heading.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
         heading.add(collection);
-        if (hiddenRecipes != null) {
-            showHidden.setOpaque(false);
-            showHidden.setFont(UiTheme.BODY_FONT);
-            showHidden.setForeground(UiTheme.TEXT_PRIMARY);
-            showHidden.setAlignmentX(LEFT_ALIGNMENT);
-            showHidden.addActionListener(event -> rebuildCards());
-            heading.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
-            heading.add(showHidden);
-        }
         heading.add(Box.createVerticalStrut(UiTheme.SPACE_MD));
         heading.add(statusLabel);
         return heading;
@@ -382,9 +346,8 @@ public class RecipesPanel extends JPanel {
         String query = searchField.getText().trim().toLowerCase(Locale.ROOT);
         List<RecipeDisplayData> visible = new ArrayList<>();
         for (RecipeDisplayData recipe : recipes) {
-            if ((!isHidden(recipe) || showHidden.isSelected())
-                    && (query.isEmpty()
-                    || recipe.getName().toLowerCase(Locale.ROOT).contains(query))) {
+            if (query.isEmpty()
+                    || recipe.getName().toLowerCase(Locale.ROOT).contains(query)) {
                 visible.add(recipe);
             }
         }
@@ -410,7 +373,7 @@ public class RecipesPanel extends JPanel {
                 constraints.fill = GridBagConstraints.HORIZONTAL;
                 constraints.anchor = GridBagConstraints.NORTHWEST;
                 constraints.insets = new Insets(0, 0, UiTheme.SPACE_MD, 0);
-                RecipeCard card = createCard(recipe);
+                RecipeCard card = new RecipeCard(recipe, () -> selectRecipe(recipe.getId()));
                 card.setSelected(recipe.getId().equals(selectedId));
                 cardList.add(card, constraints);
                 row++;
@@ -426,53 +389,6 @@ public class RecipesPanel extends JPanel {
         }
         cardList.revalidate();
         cardList.repaint();
-    }
-
-    private RecipeCard createCard(RecipeDisplayData recipe) {
-        String id = recipe.getId();
-        Runnable select = () -> selectRecipe(id);
-        if (hiddenRecipes == null || recipe.getExternalId() != null) {
-            return new RecipeCard(recipe, select);
-        }
-        boolean hidden = isHidden(recipe);
-        return new RecipeCard(recipe, select, hidden ? "Restore" : "Hide",
-                () -> setHidden(id, !hidden),
-                deleteAction == null ? null : () -> confirmDelete(recipe));
-    }
-
-    private void confirmDelete(RecipeDisplayData recipe) {
-        int answer = JOptionPane.showConfirmDialog(this,
-                "Delete “" + recipe.getName() + "” from My Collection? "
-                        + "Any meals using it will need a replacement.",
-                "Delete Recipe", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
-        if (answer == JOptionPane.OK_OPTION) {
-            deleteAction.accept(recipe.getId());
-        }
-    }
-
-    private boolean isHidden(RecipeDisplayData recipe) {
-        return hiddenRecipes != null && recipe.getExternalId() == null
-                && hiddenRecipes.getBoolean(hiddenKey(recipe.getId()), false);
-    }
-
-    private void setHidden(String id, boolean hidden) {
-        if (hidden) {
-            hiddenRecipes.putBoolean(hiddenKey(id), true);
-            if (id.equals(selectedId) && !showHidden.isSelected()) {
-                selectedId = null;
-                selectionRequest++;
-                clearResolvedRecipe();
-                recipeSelectionClearedAction.run();
-                renderDetails();
-            }
-        } else {
-            hiddenRecipes.remove(hiddenKey(id));
-        }
-        rebuildCards();
-    }
-
-    private static String hiddenKey(String id) {
-        return UUID.nameUUIDFromBytes(id.getBytes(StandardCharsets.UTF_8)).toString();
     }
 
     private void addFrameCards() {
@@ -506,16 +422,6 @@ public class RecipesPanel extends JPanel {
         message.setFont(UiTheme.SECTION_HEADING_FONT);
         message.setForeground(UiTheme.TEXT_SECONDARY);
         return message;
-    }
-
-    /** Opens a recipe after the saved collection has been loaded. */
-    public void showSavedRecipe(String recipeId) {
-        searchField.setText("");
-        if (findById(recipeId) == null) {
-            setStatusMessage("This planned recipe is no longer in My Collection.");
-            return;
-        }
-        selectRecipe(recipeId);
     }
 
     private void selectRecipe(String recipeId) {

@@ -5,11 +5,9 @@ import entity.MealPlan;
 import interface_adapter.weekly_meal_plan.WeeklyMealPlanController;
 import interface_adapter.weekly_meal_plan.WeeklyMealPlanPresenter;
 import interface_adapter.weekly_meal_plan.WeeklyMealPlanViewModel;
-import entity.MealPlanEntry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -17,7 +15,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WeeklyMealPlanPersistenceTest {
     private static final LocalDate MONDAY = LocalDate.of(2026, 11, 23);
@@ -27,12 +24,13 @@ class WeeklyMealPlanPersistenceTest {
     Path directory;
 
     @Test
-    void autosavesReplacementAndClear() {
+    void restoresSavedReplacementAndKeepsClearAsDraftUntilSaved() {
         WeeklyMealPlanViewModel draft = new WeeklyMealPlanViewModel();
         WeeklyMealPlanController editor = controller(draft, directory);
         editor.addEntry(WEDNESDAY, "Dinner", "pasta");
         editor.addEntry(WEDNESDAY, "Dinner", "soup");
         assertEquals(List.of("2026-11-25 | Dinner | soup"), draft.getEntries());
+        editor.savePlan();
 
         WeeklyMealPlanViewModel reopened = new WeeklyMealPlanViewModel();
         WeeklyMealPlanController reader = controller(reopened, directory);
@@ -42,25 +40,11 @@ class WeeklyMealPlanPersistenceTest {
         editor.clearPlan();
         assertTrue(draft.getAssignments().isEmpty());
         reader.loadPlan();
+        assertEquals(1, reopened.getAssignments().size());
+
+        editor.savePlan();
+        reader.loadPlan();
         assertTrue(reopened.getAssignments().isEmpty());
-    }
-
-    @Test
-    void movesMealsToTheSameWeekdayAndProtectsAnExistingDestination() throws Exception {
-        FileWeeklyMealPlanDataAccess storage = new FileWeeklyMealPlanDataAccess(directory);
-        MealPlan original = new MealPlan(MONDAY);
-        original.addEntry(new MealPlanEntry(LocalDate.parse(WEDNESDAY), "Dinner", "soup"));
-        storage.save(original);
-
-        LocalDate occupied = MONDAY.plusWeeks(1);
-        storage.save(new MealPlan(occupied));
-        assertThrows(FileAlreadyExistsException.class, () -> storage.moveWeek(MONDAY, occupied));
-        assertEquals(1, storage.load(MONDAY).getEntries().size());
-
-        LocalDate target = MONDAY.plusWeeks(2);
-        storage.moveWeek(MONDAY, target);
-        assertTrue(storage.load(MONDAY).getEntries().isEmpty());
-        assertEquals("soup", storage.load(target).getEntry(target.plusDays(2), "Dinner").getRecipeId());
     }
 
     @Test

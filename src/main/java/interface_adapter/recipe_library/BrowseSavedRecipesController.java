@@ -16,21 +16,12 @@ public class BrowseSavedRecipesController {
     }
 
     public void execute() {
-        execute(() -> {});
-    }
-
-    public void execute(Runnable onLoaded) {
         viewModel.setStatus("Loading your collection...");
         new SwingWorker<Void, Void>() {
             @Override
             protected Void doInBackground() {
                 interactor.execute();
                 return null;
-            }
-
-            @Override
-            protected void done() {
-                onLoaded.run();
             }
         }.execute();
     }

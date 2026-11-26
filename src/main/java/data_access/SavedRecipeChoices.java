@@ -11,7 +11,7 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Reads the names and image locations from the shared recipe collection. */
+/** Reads the IDs and names from the shared Add Recipe and import collection. */
 public final class SavedRecipeChoices {
     private final Path collectionFile;
 
@@ -20,14 +20,6 @@ public final class SavedRecipeChoices {
     }
 
     public Map<String, String> load() throws IOException {
-        return loadField("name");
-    }
-
-    public Map<String, String> loadImages() throws IOException {
-        return loadField("imageUrl");
-    }
-
-    private Map<String, String> loadField(String field) throws IOException {
         String contents;
         try {
             contents = Files.readString(collectionFile);
@@ -49,10 +41,7 @@ public final class SavedRecipeChoices {
                 if (id.isBlank() || name.isBlank()) {
                     throw new IOException("A saved recipe is missing its ID or name.");
                 }
-                String value = recipe.optString(field, "");
-                if (!value.isBlank()) {
-                    choices.putIfAbsent(id, value);
-                }
+                choices.putIfAbsent(id, name);
             }
         } catch (JSONException exception) {
             throw new IOException("Saved recipes could not be read.", exception);

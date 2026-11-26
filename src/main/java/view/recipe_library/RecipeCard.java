@@ -6,7 +6,6 @@ import java.awt.Container;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -16,13 +15,11 @@ import java.awt.event.MouseEvent;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 
 import interface_adapter.recipe_library.RecipeDisplayData;
 import view.UiTheme;
-import view.components.ThemeButton;
 
 /**
  * One recipe summary in the browsing list.
@@ -35,11 +32,6 @@ final class RecipeCard extends JPanel {
     private boolean hovered;
 
     RecipeCard(RecipeDisplayData recipe, Runnable onSelect) {
-        this(recipe, onSelect, null, null, null);
-    }
-
-    RecipeCard(RecipeDisplayData recipe, Runnable onSelect, String actionLabel,
-               Runnable onAction, Runnable onDelete) {
         this(recipe.getId(), false);
         JPanel text = new JPanel();
         text.setLayout(new BoxLayout(text, BoxLayout.Y_AXIS));
@@ -55,27 +47,7 @@ final class RecipeCard extends JPanel {
                 UiTheme.LABEL_FONT, UiTheme.SECONDARY,
                 "recipe-card-servings-" + recipeId));
         add(text, BorderLayout.CENTER);
-        JPanel actions = actionLabel == null ? null
-                : new JPanel(new FlowLayout(FlowLayout.RIGHT, UiTheme.SPACE_XS, 0));
-        installPointer(this, pointer(onSelect, actions));
-        if (actions != null) {
-            setToolTipText("Drag left or right-click for recipe options");
-            actions.setOpaque(false);
-            actions.setVisible(false);
-            JButton visibility = new ThemeButton(actionLabel, false);
-            visibility.addActionListener(event -> onAction.run());
-            actions.add(visibility);
-            if (onDelete != null) {
-                JButton delete = new ThemeButton("Delete", false);
-                delete.setForeground(UiTheme.ERROR);
-                delete.addActionListener(event -> onDelete.run());
-                actions.add(delete);
-            }
-            JPanel actionArea = new JPanel(new java.awt.GridBagLayout());
-            actionArea.setOpaque(false);
-            actionArea.add(actions);
-            add(actionArea, BorderLayout.EAST);
-        }
+        installPointer(this, pointer(onSelect));
     }
 
     /** A card outline with empty bars and no recipe content. */
@@ -90,7 +62,7 @@ final class RecipeCard extends JPanel {
         text.add(Box.createVerticalStrut(UiTheme.SPACE_SM));
         text.add(bar(72, 10, UiTheme.SECONDARY));
         card.add(text, BorderLayout.CENTER);
-        card.installPointer(card, card.pointer(onSelect, null));
+        card.installPointer(card, card.pointer(onSelect));
         return card;
     }
 
@@ -108,31 +80,8 @@ final class RecipeCard extends JPanel {
         refreshColors();
     }
 
-    private MouseAdapter pointer(Runnable onSelect, JPanel action) {
+    private MouseAdapter pointer(Runnable onSelect) {
         return new MouseAdapter() {
-            private int pressX;
-            private int pressY;
-
-            @Override
-            public void mousePressed(MouseEvent event) {
-                pressX = event.getXOnScreen();
-                pressY = event.getYOnScreen();
-            }
-
-            @Override
-            public void mouseReleased(MouseEvent event) {
-                if (action == null || event.getButton() != MouseEvent.BUTTON1) {
-                    return;
-                }
-                int dx = event.getXOnScreen() - pressX;
-                int dy = event.getYOnScreen() - pressY;
-                if (Math.abs(dx) >= 36 && Math.abs(dx) > Math.abs(dy)) {
-                    action.setVisible(dx < 0);
-                    revalidate();
-                    repaint();
-                }
-            }
-
             @Override
             public void mouseEntered(MouseEvent event) {
                 hovered = true;
@@ -152,13 +101,7 @@ final class RecipeCard extends JPanel {
 
             @Override
             public void mouseClicked(MouseEvent event) {
-                if (action != null && event.getButton() == MouseEvent.BUTTON3) {
-                    action.setVisible(!action.isVisible());
-                    revalidate();
-                    repaint();
-                } else if (event.getButton() != MouseEvent.BUTTON3) {
-                    onSelect.run();
-                }
+                onSelect.run();
             }
         };
     }
