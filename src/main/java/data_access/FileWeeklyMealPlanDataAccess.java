@@ -7,13 +7,17 @@ import use_case.weekly_meal_plan.WeeklyMealPlanDataAccessInterface;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
+import java.util.stream.Stream;
 
 /** Persists a separate plan for each week in a local directory. */
 public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInterface {
@@ -47,6 +51,10 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
 
     @Override
     public void save(MealPlan mealPlan) throws IOException {
+        write(mealPlan, true);
+    }
+
+    private void write(MealPlan mealPlan, boolean replace) throws IOException {
         Properties entries = new Properties();
         for (MealPlanEntry entry : mealPlan.getEntries()) {
             entries.setProperty(entry.getDate() + " " + entry.getMealType(), entry.getRecipeId());
@@ -58,11 +66,71 @@ public class FileWeeklyMealPlanDataAccess implements WeeklyMealPlanDataAccessInt
             try (OutputStream output = Files.newOutputStream(temporaryFile)) {
                 entries.store(output, null);
             }
-            Files.move(temporaryFile, planFile(mealPlan.getWeekStartDate()),
-                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            Path target = planFile(mealPlan.getWeekStartDate());
+            if (replace) {
+                Files.move(temporaryFile, target,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } else {
+                Files.move(temporaryFile, target);
+            }
         } finally {
             Files.deleteIfExists(temporaryFile);
         }
+    }
+
+    public List<LocalDate> savedWeeks() throws IOException {
+        List<LocalDate> weeks = new ArrayList<>();
+        try (Stream<Path> files = Files.list(directory)) {
+            files.filter(Files::isRegularFile).forEach(file -> {
+                String name = file.getFileName().toString();
+                if (name.endsWith(".properties")) {
+                    try {
+                        LocalDate date = LocalDate.parse(name.substring(0, name.length() - 11));
+                        if (date.getDayOfWeek() == java.time.DayOfWeek.MONDAY) {
+                            weeks.add(date);
+                        }
+                    } catch (DateTimeParseException exception) {
+                        // Files with unrelated names are not weekly plans.
+                    }
+                }
+            });
+        } catch (NoSuchFileException exception) {
+            return List.of();
+        }
+        return weeks;
+    }
+
+    public void moveWeek(LocalDate source, LocalDate destination) throws IOException {
+        if (source.equals(destination)) {
+            return;
+        }
+        Path target = planFile(destination);
+        if (Files.exists(target)) {
+            throw new FileAlreadyExistsException(target.toString());
+        }
+
+        MealPlan original = load(source);
+        MealPlan moved = new MealPlan(destination);
+        for (MealPlanEntry entry : original.getEntries()) {
+            long day = java.time.temporal.ChronoUnit.DAYS.between(source, entry.getDate());
+            moved.addEntry(new MealPlanEntry(destination.plusDays(day),
+                    entry.getMealType(), entry.getRecipeId()));
+        }
+        write(moved, false);
+        try {
+            delete(source);
+        } catch (IOException exception) {
+            try {
+                delete(destination);
+            } catch (IOException rollback) {
+                exception.addSuppressed(rollback);
+            }
+            throw exception;
+        }
+    }
+
+    public void delete(LocalDate weekStart) throws IOException {
+        Files.deleteIfExists(planFile(weekStart));
     }
 
     private Path planFile(LocalDate weekStartDate) {
