@@ -35,7 +35,9 @@ public class ThemeButton extends JButton {
             @Override
             protected void paintText(Graphics graphics, AbstractButton button,
                                      Rectangle textRect, String text) {
-                graphics.setColor(button.isEnabled() ? button.getForeground() : UiTheme.DISABLED_TEXT);
+                graphics.setColor(button.isEnabled()
+                        ? (isPrimary() ? UiTheme.BUTTON_PRIMARY_TEXT : button.getForeground())
+                        : UiTheme.DISABLED_TEXT);
                 FontMetrics metrics = graphics.getFontMetrics();
                 BasicGraphicsUtils.drawStringUnderlineCharAt(graphics, text,
                         button.getDisplayedMnemonicIndex(), textRect.x,
@@ -56,11 +58,15 @@ public class ThemeButton extends JButton {
         return getPreferredSize();
     }
 
+    private boolean isPrimary() {
+        return variant == Variant.PRIMARY || isSelected();
+    }
+
     private Color fillColor() {
         if (!isEnabled()) {
             return UiTheme.DISABLED_BACKGROUND;
         }
-        boolean primary = variant == Variant.PRIMARY;
+        boolean primary = isPrimary();
         if (getModel().isPressed() && getModel().isArmed()) {
             return primary ? UiTheme.BUTTON_PRIMARY_PRESSED : UiTheme.BUTTON_SECONDARY_PRESSED;
         }
@@ -77,7 +83,7 @@ public class ThemeButton extends JButton {
         int arc = UiTheme.CONTROL_RADIUS * 2;
         g.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
         if (isFocusOwner() && isEnabled()) {
-            g.setColor(variant == Variant.PRIMARY ? UiTheme.SURFACE : UiTheme.FOCUS_RING);
+            g.setColor(isPrimary() ? UiTheme.SURFACE : UiTheme.FOCUS_RING);
             g.setStroke(new BasicStroke(UiTheme.FOCUS_WIDTH));
             g.drawRoundRect(3, 3, getWidth() - 7, getHeight() - 7, arc - 4, arc - 4);
         }

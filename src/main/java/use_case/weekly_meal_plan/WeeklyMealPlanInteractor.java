@@ -71,13 +71,21 @@ public class WeeklyMealPlanInteractor
             return;
         }
 
-        presentPlan(message);
+        if (dataAccess == null) {
+            presentPlan(message);
+        } else {
+            persistPlan(message + " Saved.", message + " Could not save. Try again.");
+        }
     }
 
     @Override
     public void clearPlan() {
         mealPlan = new MealPlan(mealPlan.getWeekStartDate());
-        presentPlan("Weekly plan cleared. Save to keep these changes.");
+        if (dataAccess == null) {
+            presentPlan("Weekly plan cleared.");
+        } else {
+            persistPlan("Weekly plan cleared and saved.", "Could not save the cleared week. Try again.");
+        }
     }
 
     @Override
@@ -100,11 +108,15 @@ public class WeeklyMealPlanInteractor
             presenter.prepareFailView("Meal plan storage is unavailable.");
             return;
         }
+        persistPlan("Weekly meal plan saved.", "Could not save the weekly meal plan.");
+    }
+
+    private void persistPlan(String successMessage, String failureMessage) {
         try {
             dataAccess.save(mealPlan);
-            presentPlan("Weekly meal plan saved.");
+            presentPlan(successMessage);
         } catch (IOException exception) {
-            presenter.prepareFailView("Could not save the weekly meal plan.");
+            presentPlan(failureMessage);
         }
     }
 

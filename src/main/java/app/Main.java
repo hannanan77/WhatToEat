@@ -1,7 +1,11 @@
 package app;
 
+import java.util.concurrent.ExecutionException;
+import java.util.prefs.Preferences;
+
 import javax.swing.JFrame;
 import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
 import javax.swing.WindowConstants;
 
 import data_access.FileRecipeLibraryDataAccess;
@@ -19,9 +23,9 @@ import use_case.recipe_library.BrowseSavedRecipesInteractor;
 import use_case.recipe_library.ImportRecipeInteractor;
 import use_case.recipe_library.OnlineRecipeGateway;
 import use_case.recipe_library.RecipeImageCache;
-import use_case.recipe_library.RecipeLibraryDataAccessInterface;
 import use_case.recipe_library.ResolveSelectedRecipeInteractor;
 import use_case.recipe_library.SearchOnlineRecipesInteractor;
+import view.AppNavigation;
 import view.recipe_library.RecipesPanel;
 
 public class Main {
@@ -34,7 +38,7 @@ public class Main {
         final JFrame mainFrame = new JFrame("WhatToEat");
         mainFrame.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
 
-        final RecipeLibraryDataAccessInterface library =
+        final FileRecipeLibraryDataAccess library =
                 new FileRecipeLibraryDataAccess(FileRecipeLibraryDataAccess.defaultFile());
         final RecipeImageCache images =
                 new LocalRecipeImageCache(LocalRecipeImageCache.defaultDirectory());
@@ -67,18 +71,62 @@ public class Main {
                 new ResolveSelectedRecipeController(
                         new ResolveSelectedRecipeInteractor(library, gateway));
 
-        final RecipesPanel recipesPanel = new RecipesPanel();
+        final RecipesPanel recipesPanel = new RecipesPanel(
+                Preferences.userNodeForPackage(Main.class).node("hidden-recipes"));
         recipesPanel.bind(viewModel);
         recipesPanel.setOnlineSearchAction(
                 () -> searchController.execute(recipesPanel.getSearchText()));
         recipesPanel.setShowCollectionAction(browseController::execute);
+        recipesPanel.setDeleteAction(recipeId -> new SwingWorker<Void, Void>() {
+            @Override
+            protected Void doInBackground() throws java.io.IOException {
+                library.delete(recipeId);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    recipesPanel.forgetHiddenRecipe(recipeId);
+                    browseController.execute();
+                }
+                catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    recipesPanel.setStatusMessage("Recipe deletion was interrupted.");
+                }
+                catch (ExecutionException exception) {
+                    recipesPanel.setStatusMessage("Could not delete the recipe.");
+                }
+            }
+        }.execute());
         recipesPanel.setImportAction(importController::execute);
         recipesPanel.setRecipeResolver(selectionController);
 
         final NutritionAssembly nutritionAssembly = new NutritionAssembly(mainFrame);
         recipesPanel.setViewNutritionAction(nutritionAssembly::showForRecipe);
 
-        mainFrame.setContentPane(recipesPanel);
+        final boolean mac = System.getProperty("os.name").startsWith("Mac");
+        if (mac) {
+            mainFrame.getRootPane().putClientProperty("apple.awt.fullWindowContent", true);
+            mainFrame.getRootPane().putClientProperty("apple.awt.transparentTitleBar", true);
+            mainFrame.getRootPane().putClientProperty("apple.awt.windowTitleVisible", false);
+        }
+
+        final AppNavigation navigation = new AppNavigation(mac);
+        final String recipesPage = "Recipes";
+        navigation.addPage(recipesPage, () -> recipesPanel);
+        navigation.addPage("Add Recipe", () -> AddRecipePreview.createView(library, () -> {
+            browseController.execute();
+            navigation.showPage(recipesPage);
+        }));
+        navigation.addPage("Weekly Meal Plan", () ->
+                WeeklyMealPlanPreview.createPlanner(recipeId -> {
+                    navigation.showPage(recipesPage);
+                    browseController.execute(() -> recipesPanel.showSavedRecipe(recipeId));
+                }));
+        navigation.showPage(recipesPage);
+        mainFrame.setContentPane(navigation);
         mainFrame.setSize(1100, 720);
         mainFrame.setLocationRelativeTo(null);
         mainFrame.setVisible(true);
